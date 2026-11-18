@@ -7,8 +7,8 @@
 (function () {
   'use strict';
   if (!window.NEXUS_STATIC) return; // وضع السيرفر: الملف لا يفعل شيئًا
-  const LS = 'nexus_static_db_v1';
-  const SESSION = 'nexus_static_session_v1';
+  const LS = 'nexus_static_db_v2';
+  const SESSION = 'nexus_static_session_v2';
 
   // ---------- أدوات ----------
   const nowUtc = (offsetDays = 0) => {
@@ -114,7 +114,68 @@
       { id: 2, user_id: 2, title: 'شكوى جديدة بانتظار المراجعة', body: 'NX-2026-0012 — تأخر استلام شهادة التخرج موقتًا', ref_type: 'complaint', ref_id: 13, read: 0, created_at: nowUtc(-2) },
       { id: 3, user_id: 2, title: 'شكوى جديدة بانتظار المراجعة', body: 'NX-2026-0004 — طلب استخراج شهادة قيد', ref_type: 'complaint', ref_id: 4, read: 1, created_at: nowUtc(-5) },
     ];
-    return { meta: { nextComplaint: cid + 1, nextRow: 1000 }, departments, complaint_types, users, complaints, complaint_updates, messages, notifications, ai_conversations: [], knowledge_documents, reports: [] };
+    // ---------- الخدمات الأكاديمية ----------
+    const timetable = [
+      { id: 1, day: 'السبت', start_time: '09:00', end_time: '11:00', course: 'قواعد البيانات', doctor: 'د/ أسامة فؤاد', room: 'قاعة ب12', course_code: 'CS-201' },
+      { id: 2, day: 'الأحد', start_time: '11:00', end_time: '13:00', course: 'برمجة كائنية التوجه', doctor: 'د/ منى عوض', room: 'معمل 3', course_code: 'CS-202' },
+      { id: 3, day: 'الاثنين', start_time: '09:00', end_time: '11:00', course: 'شبكات الحاسب', doctor: 'د/ حازم نبيل', room: 'قاعة أ7', course_code: 'CS-203' },
+      { id: 4, day: 'الثلاثاء', start_time: '13:00', end_time: '15:00', course: 'الرياضيات المتقدمة 2', doctor: 'د/ رانيا سمير', room: 'قاعة ب4', course_code: 'MA-204' },
+      { id: 5, day: 'الأربعاء', start_time: '09:00', end_time: '11:00', course: 'رسم هندسي', doctor: 'د/ علي منصور', room: 'معمل الرسم', course_code: 'EN-205' },
+      { id: 6, day: 'الخميس', start_time: '11:00', end_time: '13:00', course: 'قواعد البيانات — تمارين', doctor: 'م/ هبة رشاد', room: 'معمل 2', course_code: 'CS-201T' },
+    ];
+    const exams = [
+      { id: 1, course: 'قواعد البيانات', exam_date: nowUtc(3), room: 'قاعة ب12', duration_minutes: 120 },
+      { id: 2, course: 'برمجة كائنية التوجه', exam_date: nowUtc(9), room: 'معمل 3', duration_minutes: 90 },
+      { id: 3, course: 'شبكات الحاسب', exam_date: nowUtc(16), room: 'قاعة أ7', duration_minutes: 120 },
+      { id: 4, course: 'الرياضيات المتقدمة 2', exam_date: nowUtc(23), room: 'قاعة ب4', duration_minutes: 90 },
+    ];
+    const grades = [
+      { id: 1, student_id: 6, course: 'قواعد البيانات', credit_hours: 4, score: 84, semester: '2025/2026 - فصل أول' },
+      { id: 2, student_id: 6, course: 'برمجة كائنية التوجه', credit_hours: 4, score: 91, semester: '2025/2026 - فصل أول' },
+      { id: 3, student_id: 6, course: 'شبكات الحاسب', credit_hours: 3, score: 66, semester: '2025/2026 - فصل أول' },
+      { id: 4, student_id: 6, course: 'الرياضيات المتقدمة 2', credit_hours: 3, score: 78, semester: '2025/2026 - فصل أول' },
+      { id: 5, student_id: 6, course: 'رسم هندسي', credit_hours: 2, score: 88, semester: '2025/2026 - فصل أول' },
+      { id: 6, student_id: 6, course: 'مقرر فني في الهندسة', credit_hours: 2, score: 73, semester: '2025/2026 - فصل أول' },
+      { id: 7, student_id: 7, course: 'قواعد البيانات', credit_hours: 4, score: 77, semester: '2025/2026 - فصل أول' },
+      { id: 8, student_id: 7, course: 'برمجة كائنية التوجه', credit_hours: 4, score: 85, semester: '2025/2026 - فصل أول' },
+      { id: 9, student_id: 7, course: 'شبكات الحاسب', credit_hours: 3, score: 71, semester: '2025/2026 - فصل أول' },
+      { id: 10, student_id: 7, course: 'الرياضيات المتقدمة 2', credit_hours: 3, score: 62, semester: '2025/2026 - فصل أول' },
+      { id: 11, student_id: 7, course: 'رسم هندسي', credit_hours: 2, score: 90, semester: '2025/2026 - فصل أول' },
+      { id: 12, student_id: 7, course: 'مقرر فني في الهندسة', credit_hours: 2, score: 68, semester: '2025/2026 - فصل أول' },
+    ];
+    const fees = [
+      { id: 1, student_id: 6, term: 'فصل أول 2025/2026', label: 'القسط التاني — المصروفات الدراسية', amount: 25200, paid: 25200, due_date: '2026-02-15' },
+      { id: 2, student_id: 6, term: 'فصل أول 2025/2026', label: 'التأمين والأوراق', amount: 1500, paid: 1500, due_date: '2025-09-20' },
+      { id: 3, student_id: 6, term: 'فصل ثاني 2026', label: 'القسط الأول — المصروفات الدراسية', amount: 25200, paid: 0, due_date: '2026-03-01' },
+      { id: 4, student_id: 7, term: 'فصل أول 2025/2026', label: 'القسط التاني — المصروفات الدراسية', amount: 25200, paid: 16800, due_date: '2026-02-15' },
+      { id: 5, student_id: 7, term: 'فصل أول 2025/2026', label: 'التأمين والأوراق', amount: 1500, paid: 1500, due_date: '2025-09-20' },
+      { id: 6, student_id: 7, term: 'فصل ثاني 2026', label: 'القسط الأول — المصروفات الدراسية', amount: 25200, paid: 0, due_date: '2026-03-01' },
+    ];
+    const attendance_stats = [
+      { id: 1, student_id: 6, course: 'قواعد البيانات', attended: 22, total: 24 },
+      { id: 2, student_id: 6, course: 'برمجة كائنية التوجه', attended: 23, total: 24 },
+      { id: 3, student_id: 6, course: 'شبكات الحاسب', attended: 19, total: 24 },
+      { id: 4, student_id: 6, course: 'الرياضيات المتقدمة 2', attended: 20, total: 22 },
+      { id: 5, student_id: 6, course: 'رسم هندسي', attended: 21, total: 22 },
+      { id: 6, student_id: 6, course: 'مقرر فني في الهندسة', attended: 20, total: 22 },
+      { id: 7, student_id: 7, course: 'قواعد البيانات', attended: 21, total: 24 },
+      { id: 8, student_id: 7, course: 'برمجة كائنية التوجه', attended: 24, total: 24 },
+      { id: 9, student_id: 7, course: 'شبكات الحاسب', attended: 18, total: 24 },
+      { id: 10, student_id: 7, course: 'الرياضيات المتقدمة 2', attended: 16, total: 22 },
+      { id: 11, student_id: 7, course: 'رسم هندسي', attended: 22, total: 22 },
+      { id: 12, student_id: 7, course: 'مقرر فني في الهندسة', attended: 21, total: 22 },
+    ];
+    const announcements = [
+      { id: 1, admin_id: 1, title: 'انطلاق الفصل الدراسي الثاني — جدول المحاضرات متاح', body: 'نود إحاطتكم بأنه تم فتح جداول المحاضرات والامتحانات النهائية على المنصة، والرجاء الالتزام بنسبة حضور لا تقل عن 75%، والحضور عبر QR يوم كل محاضرة.', audience: 'all', created_at: nowUtc(-1) },
+    ];
+    notifications.push({ id: 4, user_id: 6, title: '📢 إعلان جامعي جديد', body: 'انطلاق الفصل الدراسي الثاني — راجع البانر في الرئيسية', ref_type: 'announcement', ref_id: 1, read: 0, created_at: nowUtc(-1) });
+    notifications.push({ id: 5, user_id: 7, title: '📢 إعلان جامعي جديد', body: 'انطلاق الفصل الدراسي الثاني — راجع البانر في الرئيسية', ref_type: 'announcement', ref_id: 1, read: 0, created_at: nowUtc(-1) });
+    const lost_found = [
+      { id: 1, student_id: 7, type: 'lost', title: 'شنطة سوداء فيها لابتوب', description: 'شنطة لابتوب سوداء عليها ملصق «هندسة بيانات» فُقدت جنب كافتيريا المبنى الرئيسي، فيها لابتوب ديل + شاحن + دفاتر.', category: 'إلكترونيات', location: 'الكافتيريا — المبنى الرئيسي', item_date: '2026-11-12', image: null, status: 'open', created_at: nowUtc(-6) },
+      { id: 2, student_id: 6, type: 'found', title: 'كارنيه طالب (سارة محمود)', description: 'تم العثور على كارنيه طالب باسم سارة محمود رقم جامعي 20230215 في ممرات مبنى ب بجوار قاعة 4.', category: 'أوراق وبطاقات', location: 'مبنى ب — الدور الأول', item_date: '2026-11-15', image: null, status: 'open', created_at: nowUtc(-3) },
+      { id: 3, student_id: 7, type: 'lost', title: 'مفتاح سيارة تويوتا', description: 'مفتاح سيارة تويوتا كامري على حلقة جلدية بني، ضاع في جراج المعهد أو أمام البوابة الشمالية.', category: 'مفاتيح', location: 'الجراج / البوابة الشمالية', item_date: '2026-11-10', image: null, status: 'open', created_at: nowUtc(-8) },
+    ];
+    return { meta: { nextComplaint: cid + 1, nextRow: 1000 }, departments, complaint_types, users, complaints, complaint_updates, messages, notifications, ai_conversations: [], knowledge_documents, reports: [], timetable, exams, grades, fees, attendance_stats, attendance_sessions: [], attendance_records: [], announcements, lost_found, lost_found_contacts: [], document_analyses: [] };
   }
 
   function loadDb() {
@@ -187,6 +248,7 @@
   ];
   const URGENT_WORDS = ['عاجل', 'طارئ', 'فوري', 'بكره', 'اليوم', 'امتحان', 'الحرمان', 'الدعم', 'ساعه', 'فورًا'];
   const HIGH_WORDS = ['بسرعه', 'قريب', 'قبل الامتحان', 'الاسبوع ده', 'لسه ما ظهرتش', 'محروق'];
+  const CRITICAL_WORDS = ['حرمان', 'امتحان بكرة', 'الامتحان بكرة', 'قبل الامتحان', 'النهاردة امتحان', 'بكرة امتحان'];
   function classifyComplaint(text) {
     const norm = normalizeArabic(text);
     const scores = CATEGORIES.map(cat => {
@@ -204,10 +266,11 @@
       ? Math.min(0.95, 0.4 + Math.min(best.score, 8) * 0.06 + (matchCount >= 3 ? 0.1 : matchCount === 2 ? 0.05 : 0))
       : 0.3;
     const urgent = URGENT_WORDS.some(w => norm.includes(normalizeArabic(w)));
-    const high = !urgent && HIGH_WORDS.some(w => norm.includes(normalizeArabic(w)));
-    const priority = urgent ? 'urgent' : high ? 'high' : best && best.score >= 3 ? 'medium' : 'low';
+    const critical = CRITICAL_WORDS.some(w => norm.includes(normalizeArabic(w)));
+    const high = !urgent && !critical && HIGH_WORDS.some(w => norm.includes(normalizeArabic(w)));
+    const priority = critical ? 'critical' : urgent ? 'urgent' : high ? 'high' : best && best.score >= 3 ? 'medium' : 'low';
     const dept = DB.departments.find(d => d.name === (matchedSomething ? best.dept : 'شؤون الطلاب')) || DB.departments[0];
-    return { category: matchedSomething ? best.category : 'شكوى عامة / أخرى', department_id: dept.id, department_name: dept.name, priority, urgent, is_urgent: urgent, confidence: Math.round(confidence * 100) / 100, matched_keywords: matchedSomething ? best.matched : [] };
+    return { category: matchedSomething ? best.category : 'شكوى عامة / أخرى', department_id: dept.id, department_name: dept.name, priority, urgent, is_urgent: urgent, critical, confidence: Math.round(confidence * 100) / 100, matched_keywords: matchedSomething ? best.matched : [] };
   }
   function searchKnowledge(query, topN = 3) {
     const qTokens = tokens(query);
@@ -265,7 +328,9 @@
   function buildInsights() {
     const all = DB.complaints.map(c => ({ ...c, department_name: (DB.departments.find(d => d.id === c.department_id) || {}).name, type_name: c.type_id ? (DB.complaint_types.find(t => t.id === c.type_id) || {}).name : null }));
     const total = all.length;
-    const open = all.filter(c => c.status === 'new' || c.status === 'in_progress').length;
+    const newCount = all.filter(c => c.status === 'new').length;
+    const inProgress = all.filter(c => c.status === 'in_progress').length;
+    const open = newCount + inProgress;
     const resolved = all.filter(c => c.status === 'resolved').length;
     const rejected = all.filter(c => c.status === 'rejected').length;
     const resolvedTimes = all.filter(c => c.status === 'resolved' && c.resolved_at).map(c => (parseUtc(c.resolved_at) - parseUtc(c.created_at)) / 3600000);
@@ -291,7 +356,7 @@
     const prediction = linearPredict(series.map(s => s.count));
     const currentWeek = series.length ? series[series.length - 1].count : 0;
     const urgentOpen = all.filter(c => (c.status === 'new' || c.status === 'in_progress') && (c.priority === 'urgent' || c.priority === 'high')).length;
-    return { total, open, resolved, rejected, avgResolutionHours, satisfaction, perDepartment, topTypes, staffPerf, series, prediction, currentWeek, urgentOpen };
+    return { total, newCount, inProgress, open, resolved, rejected, avgResolutionHours, satisfaction, perDepartment, topTypes, staffPerf, series, prediction, currentWeek, urgentOpen };
   }
   function generateSummary() {
     const i = buildInsights();
@@ -316,6 +381,173 @@
     if (i.avgResolutionHours > 72) lines.push('- مراجعة زمن الاستجابة المستهدف (SLA) وتفعيل تنبيهات تلقائية للشكاوى المتأخرة.');
     lines.push('- تحديث قاعدة المعرفة (اللوائح) باستمرار لرفع جودة إجابات المساعد الذكي.');
     return { summary: lines.join('\n'), insights: i, generatedAt: today };
+  }
+
+  const PRIORITY_VALUES = ['low', 'medium', 'high', 'urgent', 'critical'];
+
+  // فحص "اقتراب موعد انتهاء مدة الحل" — يُستدعى مع تحميل الإشعارات
+  function slaReminderScan() {
+    const now = Date.now();
+    const open = DB.complaints.filter(c => c.status === 'new' || c.status === 'in_progress');
+    for (const c of open) {
+      const dept = DB.departments.find(d => d.id === c.department_id);
+      if (!dept) continue;
+      const created = parseUtc(c.created_at).getTime();
+      if (isNaN(created)) continue;
+      const hoursLeft = (created + dept.sla_hours * 3600000 - now) / 3600000;
+      if (hoursLeft < 12) {
+        const already = DB.notifications.find(n => n.ref_id === c.id && n.ref_type === 'complaint' && n.title.startsWith('اقتراب موعد'));
+        if (already) continue;
+        notify(c.student_id, 'اقتراب موعد انتهاء مدة الحل ⏳', `${c.ticket_no} — تبقى أقل من 12 ساعة على موعد الـ SLA`, 'complaint', c.id);
+        const targets = c.assigned_to ? [c.assigned_to] : DB.users.filter(x => x.role === 'staff' && x.department_id === c.department_id && x.active).map(x => x.id);
+        for (const t of targets) notify(t, 'اقتراب موعد انتهاء الـ SLA ⏳', `${c.ticket_no} — سارع بالرد على الطالب`, 'complaint', c.id);
+      }
+    }
+    saveDb(DB);
+  }
+
+  // ---------- اسأل الإدارة ----------
+  const ADMIN_SUGGESTIONS = [
+    'ما أكثر مشكلة تواجه الطلاب هذا الشهر؟',
+    'ما القسم الذي يستقبل أكبر عدد من الشكاوى؟',
+    'ما متوسط وقت حل الشكاوى؟',
+    'ما نسبة الشكاوى التي تم حلها؟',
+  ];
+  function deptStatsForAsk() {
+    const rows = DB.complaints.map(c => ({ ...c, department_name: (DB.departments.find(d => d.id === c.department_id) || {}).name }));
+    const deptMap = {};
+    for (const c of rows) {
+      const k = c.department_name;
+      deptMap[k] = deptMap[k] || { name: k, total: 0, open: 0, resolved: 0 };
+      deptMap[k].total++;
+      if (c.status === 'new' || c.status === 'in_progress') deptMap[k].open++;
+      if (c.status === 'resolved') deptMap[k].resolved++;
+    }
+    return Object.values(deptMap).sort((a, b) => b.total - a.total);
+  }
+  function weekCountsForAsk() {
+    const map = new Map();
+    for (const c of DB.complaints) {
+      const d = parseUtc(c.created_at);
+      if (isNaN(d)) continue;
+      const day = d.getUTCDay();
+      const thursday = new Date(d); thursday.setUTCDate(d.getUTCDate() + 4 - (day || 7));
+      const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil(((thursday - yearStart) / 86400000 + 1) / 7);
+      const key = `${thursday.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-8).map(([week, count]) => ({ week, count }));
+  }
+  function adminAsk(question) {
+    const nq = normalizeArabic(question);
+    const has = (...words) => words.some(w => nq.includes(normalizeArabic(w)));
+    const ins = buildInsights();
+    const perDepartment = deptStatsForAsk();
+    const series = weekCountsForAsk();
+
+    if (has('توقع', 'القادم', 'الاسبوع الجاي')) {
+      return {
+        answer: `بناءً على انحدار خطي على آخر ${series.length} أسابيع من البيانات الفعلية، أتوقع ${ins.prediction} شكوى في الأسبوع القادم. هذا الأسبوع وصل ${ins.currentWeek} شكوى.`,
+        stats: [{ label: 'توقع الأسبوع القادم', value: String(ins.prediction) }, { label: 'شكاوى هذا الأسبوع', value: String(ins.currentWeek) }],
+        chart: { type: 'line', title: 'الحجم الأسبوعي للشكاوى', labels: series.map(s => s.week), values: series.map(s => s.count) },
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('اكثر مشكل', 'أكثر مشكل', 'مشاكل متكرر', 'مشكلات متكرر')) {
+      const top = ins.topTypes.slice(0, 3);
+      if (!top.length) return { answer: 'لا توجد شكاوى كافية لتحديد أكثر المشكلات تكرارًا بعد.', stats: [], chart: null, suggestions: ADMIN_SUGGESTIONS };
+      return {
+        answer: `أكثر المشكلات تكرارًا:\n${top.map((t, i) => `${i + 1}. ${t.name} — ${t.count} شكوى`).join('\n')}`,
+        stats: top.map(t => ({ label: t.name, value: `${t.count}` })),
+        chart: { type: 'bar', title: 'أكثر الأنواع تكرارًا', labels: top.map(t => t.name), values: top.map(t => t.count) },
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('اكثر قسم', 'أكثر قسم', 'اكبر عدد', 'أكبر عدد', 'يستقبل', 'استقبال')) {
+      if (!perDepartment.length) return { answer: 'لا توجد شكاوى مسجلة بعد.', stats: [], chart: null, suggestions: ADMIN_SUGGESTIONS };
+      const top = perDepartment[0];
+      return {
+        answer: `القسم الأعلى استقبالًا للشكاوى هو «${top.name}» بإجمالي ${top.total} شكوى (${top.open} مفتوحة حاليًا و${top.resolved} تم حلها).`,
+        stats: [{ label: 'إجمالي الشكاوى', value: String(top.total) }, { label: 'مفتوحة', value: String(top.open) }, { label: 'تم حلها', value: String(top.resolved) }],
+        chart: { type: 'bar', title: 'الشكاوى حسب القسم', labels: perDepartment.map(d => d.name), values: perDepartment.map(d => d.total) },
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('متوسط') && has('وقت', 'زمن')) {
+      const cmp = ins.avgResolutionHours <= 48 ? 'ضمن مستهدف الـ SLA (48 ساعة)' : 'أعلى من مستهدف الـ SLA (48 ساعة) — يحتاج تدخل';
+      return {
+        answer: `متوسط زمن حل الشكاوى في المعهد ${ins.avgResolutionHours} ساعة — وهذا ${cmp}.`,
+        stats: [{ label: 'متوسط زمن الحل', value: `${ins.avgResolutionHours} ساعة` }, { label: 'مستهدف الـ SLA', value: '48 ساعة' }],
+        chart: null,
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('نسبة') && has('حل')) {
+      const pct = ins.total ? Math.round((ins.resolved / ins.total) * 100) : 0;
+      return {
+        answer: `تم حل ${ins.resolved} من أصل ${ins.total} شكوى — أي بنسبة ${pct}% (المرفوضة: ${ins.rejected}).`,
+        stats: [{ label: 'تم حلها', value: String(ins.resolved) }, { label: 'مفتوحة', value: String(ins.open) }, { label: 'نسبة الحل', value: `${pct}%` }],
+        chart: { type: 'bar', title: 'توزيع حالات الشكاوى', labels: ['جديدة', 'قيد المراجعة', 'تم الحل', 'مرفوضة'], values: [ins.newCount, ins.inProgress, ins.resolved, ins.rejected] },
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('رضا', 'تقييم', 'اراء')) {
+      const deptRate = {};
+      for (const c of DB.complaints.filter(c => c.rating)) {
+        const k = (DB.departments.find(d => d.id === c.department_id) || {}).name || 'غير محدد';
+        const r = deptRate[k] = deptRate[k] || { name: k, sum: 0, count: 0 };
+        r.sum += c.rating; r.count++;
+      }
+      const byDept = Object.values(deptRate).map(d => ({ name: d.name, avg: d.sum / d.count, count: d.count })).sort((a, b) => b.avg - a.avg);
+      const best = byDept[0], worst = byDept[byDept.length - 1];
+      const totalRatings = byDept.reduce((s, d) => s + d.count, 0);
+      return {
+        answer: `متوسط رضا الطلاب ${ins.satisfaction !== null ? ins.satisfaction + '%' : 'غير متاح'} من ${totalRatings} تقييم.${best ? `\nأعلى قسم: «${best.name}»` : ''}${worst && worst !== best ? `\nأقل قسم: «${worst.name}» — يحتاج تحسين` : ''}`,
+        stats: byDept.map(d => ({ label: d.name, value: `${Math.round(d.avg * 20)}%` })).slice(0, 4),
+        chart: byDept.length ? { type: 'bar', title: 'نسبة الرضا حسب القسم', labels: byDept.map(d => d.name), values: byDept.map(d => Math.round(d.avg * 20)) } : null,
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('متاخر', 'متأخر', 'تأخير', 'اتأخرت')) {
+      const rows = DB.complaints.filter(c => c.status === 'new' || c.status === 'in_progress').sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).slice(0, 5);
+      if (!rows.length) return { answer: 'مفيش شكاوى مفتوحة متأخرة دلوقتي — كل شيء تحت السيطرة ✓', stats: [], chart: null, suggestions: ADMIN_SUGGESTIONS };
+      return {
+        answer: `أقدم ${rows.length} شكاوى مفتوحة تحتاج انتباه:\n${rows.map(r => `- ${r.ticket_no}: ${r.title.slice(0, 60)}`).join('\n')}`,
+        stats: rows.map(r => ({ label: r.ticket_no, value: 'مفتوحة' })),
+        chart: null,
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('مقارنة', 'الشهر الماضي', 'الشهر السابق')) {
+      const now = Date.now();
+      const thisMonth = DB.complaints.filter(c => now - parseUtc(c.created_at) < 30 * 86400000).length;
+      const prevMonth = DB.complaints.filter(c => { const t = now - parseUtc(c.created_at); return t >= 30 * 86400000 && t < 60 * 86400000; }).length;
+      const diff = thisMonth - prevMonth;
+      const trend = diff > 0 ? `زادت بمقدار ${diff} شكوى عن الشهر السابق` : diff < 0 ? `انخفضت بمقدار ${Math.abs(diff)} شكوى عن الشهر السابق` : 'ثابتة مقارنة بالشهر السابق';
+      return {
+        answer: `خلال آخر 30 يوم: ${thisMonth} شكوى، مقابل ${prevMonth} في الـ 30 يوم التي قبلها — ${trend}.`,
+        stats: [{ label: 'آخر 30 يوم', value: String(thisMonth) }, { label: 'الـ 30 يوم السابقة', value: String(prevMonth) }, { label: 'الفرق', value: (diff >= 0 ? '+' : '') + diff }],
+        chart: { type: 'bar', title: 'مقارنة شهرية', labels: ['الشهر الماضي', 'آخر 30 يوم'], values: [prevMonth, thisMonth] },
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('عاجل', 'حرج', 'critical', 'عاجله', 'حرجة')) {
+      const criticalOpen = DB.complaints.filter(c => c.priority === 'critical' && (c.status === 'new' || c.status === 'in_progress')).length;
+      return {
+        answer: `حاليًا يوجد ${ins.urgentOpen} شكوى عاجلة/عالية الأولوية مفتوحة، منها ${criticalOpen} بمستوى «حرج». راجع «الشكاوى العاجلة» في لوحة الموظفين.`,
+        stats: [{ label: 'عاجلة/مرتفعة مفتوحة', value: String(ins.urgentOpen) }, { label: 'حرجة مفتوحة', value: String(criticalOpen) }],
+        chart: null,
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    const pct = ins.total ? Math.round((ins.resolved / ins.total) * 100) : 0;
+    return {
+      answer: `نظرة عامة على المعهد:\nإجمالي الشكاوى ${ins.total} (${ins.open} مفتوحة، ${ins.resolved} تم حلها = ${pct}%، ${ins.rejected} مرفوضة).\nمتوسط زمن الحل ${ins.avgResolutionHours} ساعة${ins.satisfaction !== null ? `، رضا الطلاب ${ins.satisfaction}%` : ''}.\nجرّب سؤالًا محددًا مثل: «ما أكثر قسم استقبالًا؟»`,
+      stats: [{ label: 'إجمالي الشكاوى', value: String(ins.total) }, { label: 'مفتوحة', value: String(ins.open) }, { label: 'نسبة الحل', value: `${pct}%` }],
+      chart: null,
+      suggestions: ADMIN_SUGGESTIONS,
+    };
   }
 
   // ---------- الراوتر ----------
@@ -402,7 +634,7 @@
       if (p.q) { const q = String(p.q).toLowerCase(); rows = rows.filter(c => [c.title, c.details, c.ticket_no, c.student_name].some(v => String(v || '').toLowerCase().includes(q))); }
       if (p.from) rows = rows.filter(c => c.created_at >= `${p.from} 00:00:00`);
       if (p.to) rows = rows.filter(c => c.created_at <= `${p.to} 23:59:59`);
-      const PR = { urgent: 0, high: 1, medium: 2, low: 3 };
+      const PR = { critical: 0, urgent: 1, high: 2, medium: 3, low: 4 };
       rows.sort((a, b) => (PR[a.priority] - PR[b.priority]) || String(b.created_at).localeCompare(String(a.created_at)));
       return ok(rows.slice(0, 500));
     }
@@ -513,13 +745,16 @@
       const c = DB.complaints.find(x => x.id === Number(mRate[1]) && x.student_id === u.id);
       if (!c) return fail(404, 'الشكوى غير موجودة');
       if (c.status !== 'resolved') return fail(400, 'لا يمكن التقييم قبل الحل');
-      c.rating = r; c.updated_at = nowUtc(); saveDb(DB);
+      c.rating = r;
+      c.rating_comment = String(body.comment || '').trim().slice(0, 1000) || null;
+      c.updated_at = nowUtc(); saveDb(DB);
       return ok({ complaint: loadComplaint(c.id) });
     }
 
     // ===== Notifications =====
     if (path === '/api/notifications' && method === 'GET') {
       const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      slaReminderScan();
       const limit = Math.min(Number(query.limit) || 30, 100);
       let rows = DB.notifications.filter(n => n.user_id === u.id);
       if (query.unread === '1') rows = rows.filter(n => !n.read);
@@ -713,6 +948,248 @@
       }
       return ok({ csv: '﻿' + lines.join('\r\n'), filename: 'nexus-ai-report.csv' });
     }
+
+    // ===== الخدمات الأكاديمية =====
+    if (path === '/api/academic/timetable' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      const DAY_ORDER = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+      return ok(DB.timetable.slice().sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day) || a.start_time.localeCompare(b.start_time)));
+    }
+    if (path === '/api/academic/exams' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      const now = Date.now();
+      return ok(DB.exams.slice().sort((a, b) => String(a.exam_date).localeCompare(String(b.exam_date))).map(e => ({ ...e, seconds_until: Math.max(0, Math.floor((parseUtc(e.exam_date) - now) / 1000)) })));
+    }
+    if (path === '/api/academic/grades' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const rows = DB.grades.filter(g => g.student_id === u.id);
+      const totalHours = rows.reduce((a, r) => a + r.credit_hours, 0);
+      const weighted = rows.reduce((a, r) => a + r.score * r.credit_hours, 0);
+      const mean = totalHours ? weighted / totalHours : 0;
+      const gpa = rows.length ? Math.round((mean / 100 * 4) * 100) / 100 : 0;
+      const gradeOf = s => s >= 85 ? 'ممتاز' : s >= 75 ? 'جيد جدًا' : s >= 65 ? 'جيد' : s >= 50 ? 'مقبول' : 'راسب';
+      return ok({ grades: rows.map(r => ({ ...r, grade: gradeOf(r.score) })).sort((a, b) => b.score - a.score), mean: Math.round(mean * 10) / 10, gpa, totalCredits: totalHours, count: rows.length });
+    }
+    if (path === '/api/academic/fees' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const rows = DB.fees.filter(f => f.student_id === u.id).sort((a, b) => a.due_date.localeCompare(b.due_date));
+      const total = rows.reduce((a, r) => a + r.amount, 0), paid = rows.reduce((a, r) => a + r.paid, 0);
+      return ok({ fees: rows, total, paid, remaining: total - paid, percentPaid: total ? Math.round(paid / total * 100) : 0 });
+    }
+    if (path === '/api/academic/attendance' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const courses = DB.attendance_stats.filter(a => a.student_id === u.id);
+      const totalA = courses.reduce((a, r) => a + r.attended, 0), totalT = courses.reduce((a, r) => a + r.total, 0);
+      return ok({ courses: courses.map(c => ({ ...c, pct: c.total ? Math.round(c.attended / c.total * 100) : 0, absences: c.total - c.attended })), overallPct: totalT ? Math.round(totalA / totalT * 100) : 0, totalAbsences: totalT - totalA, totalLectures: totalT });
+    }
+    if (path === '/api/academic/attendance/records' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const rows = DB.attendance_records.filter(r => r.student_id === u.id).map(r => {
+        const sess = DB.attendance_sessions.find(s => s.id === r.session_id);
+        return { attended_at: r.attended_at, lecture_name: sess ? sess.lecture_name : '—', doctor_name: sess ? sess.doctor_name : null };
+      }).sort((a, b) => String(b.attended_at).localeCompare(String(a.attended_at))).slice(0, 50);
+      return ok(rows);
+    }
+
+    // ===== حضور بـ QR =====
+    if (path === '/api/attendance/sessions' && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'staff' && u.role !== 'admin') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      if (!body.lecture_name || String(body.lecture_name).trim().length < 3) return fail(400, 'اكتب اسم المحاضرة');
+      const dur = Math.min(Math.max(Number(body.duration_minutes) || 60, 5), 240);
+      let code; do { code = Math.random().toString(16).slice(2, 8).toUpperCase(); } while (DB.attendance_sessions.some(s => s.code === code));
+      const sess = { id: nextId(DB.attendance_sessions), lecture_name: String(body.lecture_name).trim(), doctor_name: u.name, code, created_by: u.id, created_at: nowUtc(), expires_at: new Date(Date.now() + dur * 60000).toISOString().slice(0, 19).replace('T', ' '), duration_minutes: dur };
+      DB.attendance_sessions.push(sess); saveDb(DB);
+      return ok(sess, 201);
+    }
+    if (path === '/api/attendance/sessions' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'staff' && u.role !== 'admin') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const now = Date.now();
+      let rows = DB.attendance_sessions.slice().sort((a, b) => b.id - a.id).slice(0, 50);
+      if (u.role === 'staff') rows = rows.filter(r => r.created_by === u.id);
+      return ok(rows.map(r => ({ ...r, attended: DB.attendance_records.filter(x => x.session_id === r.id).length, active: parseUtc(r.expires_at) > new Date(now) })));
+    }
+    if (path === '/api/attendance/mark' && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const code = String(body.code || '').toUpperCase().trim();
+      if (!code) return fail(400, 'اكتب الكود أولًا');
+      const sess = DB.attendance_sessions.find(s => s.code === code);
+      if (!sess) return fail(404, 'الكود غير صحيح — تأكد منه مع المحاضر');
+      if (parseUtc(sess.expires_at) <= new Date()) return fail(400, 'انتهت صلاحية هذا الرمز — اطلب من المحاضر رمزًا جديدًا');
+      if (DB.attendance_records.some(r => r.session_id === sess.id && r.student_id === u.id)) return fail(409, 'تم تسجيل حضورك بالفعل لهذه المحاضرة');
+      DB.attendance_records.push({ id: nextId(DB.attendance_records), session_id: sess.id, student_id: u.id, attended_at: nowUtc() });
+      saveDb(DB);
+      return ok({ lecture_name: sess.lecture_name, attended_at: new Date().toISOString(), attended_count: DB.attendance_records.filter(r => r.session_id === sess.id).length });
+    }
+    if (path === '/api/attendance/report' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'staff' && u.role !== 'admin') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const today = new Date().toISOString().slice(0, 10);
+      const sessionsToday = DB.attendance_sessions.filter(s => String(s.created_at).slice(0, 10) === today).length;
+      const recordsToday = DB.attendance_records.filter(r => String(r.attended_at).slice(0, 10) === today).length;
+      return ok({ sessionsToday, recordsToday, totalRecords: DB.attendance_records.length, top: [] });
+    }
+
+    // ===== الأولوية يدويًا =====
+    const mPrio = path.match(/^\/api\/complaints\/(\d+)\/priority$/);
+    if (mPrio && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role === 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      if (!PRIORITY_VALUES.includes(body.priority)) return fail(400, 'أولوية غير صالحة');
+      const c = DB.complaints.find(x => x.id === Number(mPrio[1]));
+      if (!c) return fail(404, 'الشكوى غير موجودة');
+      if (!canSeeComplaint(u, c)) return fail(403, 'ليست ضمن نطاقك');
+      c.priority = body.priority; c.updated_at = nowUtc();
+      logUpdate(c.id, u.id, 'priority', `تم تعديل الأولوية يدويًا إلى: ${body.priority}`);
+      notify(c.student_id, 'تم تحديث أولوية طلبك', `${c.ticket_no} — الأولوية أصبحت ${body.priority}`, 'complaint', c.id);
+      saveDb(DB);
+      return ok({ complaint: loadComplaint(c.id) });
+    }
+
+    // ===== رضا الطلاب (إدارة) =====
+    if (path === '/api/admin/satisfaction' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'admin') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const rated = DB.complaints.filter(c => c.rating).map(c => ({ ...c, dept: (DB.departments.find(d => d.id === c.department_id) || {}).name }));
+      const avg5 = rated.length ? rated.reduce((a, r) => a + r.rating, 0) / rated.length : 0;
+      const pct = Math.round(avg5 / 5 * 100);
+      const byDeptMap = {};
+      for (const r of rated) {
+        const d = byDeptMap[r.dept] = byDeptMap[r.dept] || { name: r.dept, sum: 0, count: 0 };
+        d.sum += r.rating; d.count++;
+      }
+      const perDepartment = Object.values(byDeptMap).map(d => ({ name: d.name, avg: Math.round(d.sum / d.count * 10) / 10, pct: Math.round(d.sum / d.count / 5 * 100), count: d.count })).sort((a, b) => b.avg - a.avg);
+      const months = {};
+      for (const r of rated) { const key = String(r.updated_at).slice(0, 7); const m = months[key] = months[key] || { count: 0, sum: 0 }; m.count++; m.sum += r.rating; }
+      const monthly = Object.entries(months).sort((a, b) => a[0].localeCompare(b[0])).slice(-6).map(([month, v]) => ({ month, avg: Math.round(v.sum / v.count * 10) / 10, count: v.count }));
+      const recentComments = rated.filter(r => r.rating_comment).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))).slice(0, 8).map(r => ({ rating: r.rating, rating_comment: r.rating_comment, dept: r.dept, student_name: (findUser(r.student_id) || {}).name }));
+      return ok({ avg: Math.round(avg5 * 10) / 10, satisfactionPct: pct, total: rated.length, perDepartment, monthly, recentComments, best: perDepartment[0] || null, worst: perDepartment[perDepartment.length - 1] || null });
+    }
+
+    // ===== المستندات الذكية =====
+    if (path === '/api/documents/save' && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      if (!body.filename || !body.doc_type) return fail(400, 'بيانات المستند غير مكتملة');
+      const doc = { id: nextId(DB.document_analyses), user_id: u.id, filename: String(body.filename).slice(0, 200), doc_type: String(body.doc_type).slice(0, 80), extracted: String(body.extracted || '').slice(0, 6000), missing: Array.isArray(body.missing) ? body.missing.join('، ').slice(0, 500) : String(body.missing || '').slice(0, 500), status: body.status === 'complete' ? 'complete' : 'incomplete', created_at: nowUtc() };
+      DB.document_analyses.push(doc); saveDb(DB);
+      return ok(doc, 201);
+    }
+    if (path === '/api/documents/my' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      return ok(DB.document_analyses.filter(d => d.user_id === u.id).slice(-30).reverse());
+    }
+    const mDoc = path.match(/^\/api\/documents\/(\d+)$/);
+    if (mDoc && method === 'DELETE') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      DB.document_analyses = DB.document_analyses.filter(d => !(d.id === Number(mDoc[1]) && d.user_id === u.id));
+      saveDb(DB);
+      return ok({ deleted: Number(mDoc[1]) });
+    }
+
+    // ===== المفقودات والموجودات =====
+    if (path === '/api/lost-found' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      const p = query;
+      let rows = DB.lost_found.map(x => ({ ...x, owner_name: (findUser(x.student_id) || {}).name }));
+      if (p.type) rows = rows.filter(x => x.type === p.type);
+      if (p.status) rows = rows.filter(x => x.status === p.status);
+      if (p.category) rows = rows.filter(x => x.category === p.category);
+      if (p.q) { const q2 = String(p.q).toLowerCase(); rows = rows.filter(x => [x.title, x.description, x.location].some(v => String(v || '').toLowerCase().includes(q2))); }
+      rows.sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || String(b.created_at).localeCompare(String(a.created_at)));
+      return ok(rows.slice(0, 100).map(x => ({ ...x, can_edit: x.student_id === u.id || u.role !== 'student' })));
+    }
+    if (path === '/api/lost-found' && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      if (!['lost', 'found'].includes(body.type)) return fail(400, 'حدد نوع الإعلان');
+      if (!body.title || String(body.title).trim().length < 4) return fail(400, 'اكتب عنوانًا واضحًا (4 أحرف+)');
+      if (body.image && !(String(body.image).startsWith('data:image/') && String(body.image).length < 3500000) && !String(body.image).startsWith('/uploads/')) return fail(400, 'الصورة غير صالحة أو أكبر من 2.5MB');
+      const item = { id: nextId(DB.lost_found), student_id: u.id, type: body.type, title: String(body.title).trim(), description: String(body.description || '').trim().slice(0, 1500) || null, category: body.category || 'أخرى', location: String(body.location || '').trim() || null, item_date: body.item_date || new Date().toISOString().slice(0, 10), image: body.image || null, status: 'open', created_at: nowUtc() };
+      DB.lost_found.push(item); saveDb(DB);
+      return ok(item, 201);
+    }
+    const mLfStatus = path.match(/^\/api\/lost-found\/(\d+)\/status$/);
+    if (mLfStatus && method === 'PATCH') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (!['open', 'found', 'returned'].includes(body.status)) return fail(400, 'حالة غير صالحة');
+      const item = DB.lost_found.find(x => x.id === Number(mLfStatus[1]));
+      if (!item) return fail(404, 'الإعلان غير موجود');
+      if (item.student_id !== u.id && u.role === 'student') return fail(403, 'يمكنك تعديل إعلاناتك فقط');
+      item.status = body.status; saveDb(DB);
+      return ok(item);
+    }
+    const mLfContact = path.match(/^\/api\/lost-found\/(\d+)\/contact$/);
+    if (mLfContact && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (!body.message || String(body.message).trim().length < 3) return fail(400, 'اكتب رسالتك');
+      const item = DB.lost_found.find(x => x.id === Number(mLfContact[1]));
+      if (!item) return fail(404, 'الإعلان غير موجود');
+      DB.lost_found_contacts.push({ id: nextId(DB.lost_found_contacts), item_id: item.id, user_id: u.id, message: String(body.message).trim().slice(0, 1000), created_at: nowUtc() });
+      if (item.student_id !== u.id) notify(item.student_id, `رسالة بخصوص "${item.title.slice(0, 40)}"`, `${u.name}: ${String(body.message).trim().slice(0, 100)}`, 'lostfound', item.id);
+      else for (const a of DB.users.filter(x => ['staff', 'admin'].includes(x.role) && x.active)) notify(a.id, `تواصل بخصوص إعلان "${item.title.slice(0, 40)}"`, `${u.name}: ${String(body.message).trim().slice(0, 100)}`, 'lostfound', item.id);
+      saveDb(DB);
+      return ok({ ok: true });
+    }
+    const mLfContacts = path.match(/^\/api\/lost-found\/(\d+)\/contacts$/);
+    if (mLfContacts && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      const item = DB.lost_found.find(x => x.id === Number(mLfContacts[1]));
+      if (!item) return fail(404, 'الإعلان غير موجود');
+      if (item.student_id !== u.id && u.role === 'student') return fail(403, 'لا تملك صلاحية');
+      return ok(DB.lost_found_contacts.filter(c => c.item_id === item.id).map(c => ({ ...c, sender_name: (findUser(c.user_id) || {}).name, sender_role: (findUser(c.user_id) || {}).role })));
+    }
+    const mLfDel = path.match(/^\/api\/lost-found\/(\d+)$/);
+    if (mLfDel && method === 'DELETE') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      const item = DB.lost_found.find(x => x.id === Number(mLfDel[1]));
+      if (!item) return fail(404, 'الإعلان غير موجود');
+      if (item.student_id !== u.id && u.role === 'student') return fail(403, 'يمكنك حذف إعلاناتك فقط');
+      DB.lost_found = DB.lost_found.filter(x => x.id !== item.id);
+      saveDb(DB);
+      return ok({ deleted: item.id });
+    }
+
+    // ===== الإعلانات الجامعية =====
+    if (path === '/api/announcements' && method === 'GET') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      return ok(DB.announcements.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 10).map(a => ({ ...a, admin_name: (findUser(a.admin_id) || {}).name })));
+    }
+    if (path === '/api/admin/announcements' && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'admin') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      if (!body.title || !body.body || String(body.title).trim().length < 4 || String(body.body).trim().length < 10) return fail(400, 'اكتب عنوان (4+ أحرف) ونص (10+ أحرف)');
+      const ann = { id: nextId(DB.announcements), admin_id: u.id, title: String(body.title).trim(), body: String(body.body).trim(), audience: 'all', created_at: nowUtc() };
+      DB.announcements.push(ann);
+      for (const x of DB.users.filter(x => x.active && ['student', 'staff'].includes(x.role))) notify(x.id, '📢 إعلان جامعي جديد', String(body.title).trim().slice(0, 120), 'announcement', ann.id);
+      saveDb(DB);
+      return ok(ann, 201);
+    }
+    const mAnnDel = path.match(/^\/api\/admin\/announcements\/(\d+)$/);
+    if (mAnnDel && method === 'DELETE') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'admin') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      DB.announcements = DB.announcements.filter(a => a.id !== Number(mAnnDel[1]));
+      saveDb(DB);
+      return ok({ deleted: Number(mAnnDel[1]) });
+    }
+
+    // ===== اسأل الإدارة (AI) =====
+    if (path === '/api/admin/ask' && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'admin') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const qText = String(body.question || '').trim();
+      if (qText.length < 3) return fail(400, 'اكتب السؤال');
+      return ok(adminAsk(qText));
+    }
+
 
     return fail(404, 'هذا الـ endpoint غير موجود (static demo)');
   }

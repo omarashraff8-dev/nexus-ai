@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { initDb, getDb, q, one, run, hashPassword, verifyPassword } = require('./db');
-const { classifyComplaint, answerQuestion, buildInsights, generateSummary } = require('./ai');
+const { classifyComplaint, answerQuestion, buildInsights, generateSummary, adminAsk } = require('./ai');
 
 initDb();
 
@@ -97,6 +97,7 @@ function loadComplaint(id) {
               LEFT JOIN users a ON a.id = c.assigned_to WHERE c.id = ?`, [id]);
 }
 const STATUS_LABEL = { new: 'جديدة', in_progress: 'قيد المراجعة', resolved: 'تم الحل', rejected: 'مرفوضة' };
+const PRIORITY_VALUES = ['low', 'medium', 'high', 'urgent', 'critical'];
 
 // rate limit بسيط لمحاولات الدخول
 const loginAttempts = new Map();
@@ -191,7 +192,7 @@ route('POST', '/api/complaints', async (req, res) => {
   if (!one('SELECT id FROM departments WHERE id = ?', [deptId])) deptId = cls.department_id;
   let typeId = Number(type_id) || null;
   if (typeId && !one('SELECT id FROM complaint_types WHERE id = ?', [typeId])) typeId = null;
-  const finalPriority = ['low', 'medium', 'high', 'urgent'].includes(priority) ? priority : cls.priority;
+  const finalPriority = PRIORITY_VALUES.includes(priority) ? priority : cls.priority;
 
   const year = new Date().getFullYear();
   const seq = String((one('SELECT COUNT(*) AS c FROM complaints') || { c: 0 }).c + 1).padStart(4, '0');
@@ -231,7 +232,7 @@ route('GET', '/api/complaints', async (req, res) => {
   if (qstr) { sql += ' AND (c.title LIKE ? OR c.details LIKE ? OR c.ticket_no LIKE ? OR st.name LIKE ?)'; const like = `%${qstr}%`; params.push(like, like, like, like); }
   if (from) { sql += " AND c.created_at >= ?"; params.push(`${from} 00:00:00`); }
   if (to) { sql += " AND c.created_at <= ?"; params.push(`${to} 23:59:59`); }
-  sql += ' ORDER BY CASE c.priority WHEN \'urgent\' THEN 0 WHEN \'high\' THEN 1 WHEN \'medium\' THEN 2 ELSE 3 END, c.created_at DESC LIMIT 500';
+  sql += ' ORDER BY CASE c.priority WHEN \'critical\' THEN 0 WHEN \'urgent\' THEN 1 WHEN \'high\' THEN 2 WHEN \'medium\' THEN 3 ELSE 4 END, c.created_at DESC LIMIT 500';
   ok(res, q(sql, params));
 });
 
@@ -336,19 +337,41 @@ route('POST', '/api/complaints/:id/request-info', async (req, res, p) => {
 
 route('POST', '/api/complaints/:id/rate', async (req, res, p) => {
   const s = requireRole(req, res, ['student']); if (!s) return;
-  const { rating } = await parseJson(req);
+  const { rating, comment } = await parseJson(req);
   const r = Number(rating);
   if (!(r >= 1 && r <= 5)) return fail(res, 400, 'التقييم من 1 إلى 5');
   const c = one('SELECT * FROM complaints WHERE id = ? AND student_id = ?', [p.id, s.user.id]);
   if (!c) return fail(res, 404, 'الشكوى غير موجودة');
   if (c.status !== 'resolved') return fail(res, 400, 'لا يمكن التقييم قبل الحل');
-  run('UPDATE complaints SET rating = ? WHERE id = ?', [r, c.id]);
+  run('UPDATE complaints SET rating = ?, rating_comment = ? WHERE id = ?', [r, String(comment || '').trim().slice(0, 1000) || null, c.id]);
   ok(res, { complaint: loadComplaint(c.id) });
 });
+
+// فحص "اقتراب موعد انتهاء مدة الحل" — يُستدعى مع تحميل الإشعارات
+function slaReminderScan() {
+  try {
+    const open = q(`SELECT c.*, d.sla_hours FROM complaints c JOIN departments d ON d.id = c.department_id WHERE c.status IN ('new','in_progress')`);
+    const now = Date.now();
+    for (const c of open) {
+      const created = new Date(String(c.created_at).replace(' ', 'T') + 'Z').getTime();
+      if (isNaN(created)) continue;
+      const deadline = created + c.sla_hours * 3600 * 1000;
+      const hoursLeft = (deadline - now) / 3600000;
+      if (hoursLeft < 12) {
+        const already = one(`SELECT id FROM notifications WHERE ref_id = ? AND ref_type = 'complaint' AND title LIKE 'اقتراب موعد%' LIMIT 1`, [c.id]);
+        if (already) continue;
+        notify(c.student_id, 'اقتراب موعد انتهاء مدة الحل ⏳', `${c.ticket_no} — تبقى أقل من 12 ساعة على موعد الـ SLA لحل شكواك`, 'complaint', c.id);
+        const targets = c.assigned_to ? [c.assigned_to] : q('SELECT id FROM users WHERE role = \'staff\' AND department_id = ? AND active = 1', [c.department_id]).map(r => r.id);
+        for (const t of targets) notify(t, 'اقتراب موعد انتهاء الـ SLA ⏳', `${c.ticket_no} — سارع بالرد على الطالب`, 'complaint', c.id);
+      }
+    }
+  } catch (e) { console.error('[sla-scan]', e.message); }
+}
 
 // ===== Notifications =====
 route('GET', '/api/notifications', async (req, res) => {
   const s = requireAuth(req, res); if (!s) return;
+  slaReminderScan();
   const url = new URL(req.url, 'http://x');
   const limit = Math.min(Number(url.searchParams.get('limit')) || 30, 100);
   const unreadOnly = url.searchParams.get('unread') === '1';
@@ -534,6 +557,248 @@ route('GET', '/api/admin/reports.csv', async (req, res) => {
   const head = ['رقم الشكوى', 'اسم الطالب', 'القسم', 'نوع الشكوى', 'العنوان', 'الأولوية', 'الحالة', 'تاريخ الإنشاء', 'تاريخ الحل'];
   const csv = '\uFEFF' + [head.map(esc).join(',')].concat(rows.map(r => [r.ticket_no, r.student, r.department, r.type, r.title, r.priority, STATUS_LABEL[r.status] || r.status, r.created_at, r.resolved_at || ''].map(esc).join(','))).join('\r\n');
   send(res, 200, Buffer.from(csv, 'utf8'), { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="nexus-ai-report.csv"' });
+});
+
+// =====================================================
+//  الخدمات الأكاديمية + QR + أولوية يدوية + رضا الطلاب
+// =====================================================
+
+// الجدول الأسبوعي (للجميع — بيانات الدفعة)
+route('GET', '/api/academic/timetable', async (req, res) => {
+  const s = requireAuth(req, res); if (!s) return;
+  ok(res, q('SELECT * FROM timetable ORDER BY CASE day WHEN \'السبت\' THEN 1 WHEN \'الأحد\' THEN 2 WHEN \'الاثنين\' THEN 3 WHEN \'الثلاثاء\' THEN 4 WHEN \'الأربعاء\' THEN 5 WHEN \'الخميس\' THEN 6 ELSE 7 END, start_time'));
+});
+
+// الامتحانات القادمة + الوقت المتبقي
+route('GET', '/api/academic/exams', async (req, res) => {
+  const s = requireAuth(req, res); if (!s) return;
+  const rows = q(`SELECT * FROM exams WHERE exam_date >= datetime('now', '-1 day') ORDER BY exam_date ASC LIMIT 20`);
+  ok(res, rows.map(r => ({ ...r, seconds_until: Math.max(0, Math.floor((new Date(String(r.exam_date).replace(' ', 'T') + 'Z') - Date.now()) / 1000)) })));
+});
+
+// الدرجات + المعدل + GPA (ملف الطالب فقط)
+route('GET', '/api/academic/grades', async (req, res) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  const rows = q('SELECT * FROM grades WHERE student_id = ? ORDER BY score DESC', [s.user.id]);
+  const totalHours = rows.reduce((a, r) => a + r.credit_hours, 0);
+  const weighted = rows.reduce((a, r) => a + r.score * r.credit_hours, 0);
+  const mean = rows.length ? weighted / Math.max(1e-9, totalHours) : 0;
+  const gpa = rows.length ? Math.round((mean / 100 * 4) * 100) / 100 : 0;
+  const gradeOf = score => score >= 85 ? 'ممتاز' : score >= 75 ? 'جيد جدًا' : score >= 65 ? 'جيد' : score >= 50 ? 'مقبول' : 'راسب';
+  ok(res, { grades: rows.map(r => ({ ...r, grade: gradeOf(r.score) })), mean: Math.round(mean * 10) / 10, gpa, totalCredits: totalHours, count: rows.length });
+});
+
+// المصروفات (ملف الطالب فقط)
+route('GET', '/api/academic/fees', async (req, res) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  const rows = q('SELECT * FROM fees WHERE student_id = ? ORDER BY due_date ASC', [s.user.id]);
+  const total = rows.reduce((a, r) => a + r.amount, 0), paid = rows.reduce((a, r) => a + r.paid, 0);
+  ok(res, { fees: rows, total, paid, remaining: total - paid, percentPaid: total ? Math.round(paid / total * 100) : 0 });
+});
+
+// الحضور والغياب (ملف الطالب فقط)
+route('GET', '/api/academic/attendance', async (req, res) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  const courses = q('SELECT * FROM attendance_stats WHERE student_id = ?', [s.user.id]);
+  const totalA = courses.reduce((a, r) => a + r.attended, 0), totalT = courses.reduce((a, r) => a + r.total, 0);
+  const pct = totalT ? Math.round(totalA / totalT * 100) : 0;
+  ok(res, { courses: courses.map(c => ({ ...c, pct: c.total ? Math.round(c.attended / c.total * 100) : 0, absences: c.total - c.attended })), overallPct: pct, totalAbsences: totalT - totalA, totalLectures: totalT });
+});
+
+// سجل حضور الطالب في جلسات QR
+route('GET', '/api/academic/attendance/records', async (req, res) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  ok(res, q(`SELECT r.attended_at, sess.lecture_name, sess.doctor_name FROM attendance_records r JOIN attendance_sessions sess ON sess.id = r.session_id WHERE r.student_id = ? ORDER BY r.attended_at DESC LIMIT 50`, [s.user.id]));
+});
+
+// إنشاء جلسة QR (موظف/إدارة)
+route('POST', '/api/attendance/sessions', async (req, res) => {
+  const s = requireRole(req, res, ['staff', 'admin']); if (!s) return;
+  const { lecture_name, duration_minutes } = await parseJson(req);
+  if (!lecture_name || String(lecture_name).trim().length < 3) return fail(res, 400, 'اكتب اسم المحاضرة');
+  const dur = Math.min(Math.max(Number(duration_minutes) || 60, 5), 240);
+  const code = crypto.randomBytes(3).toString('hex').toUpperCase();
+  const info = run(`INSERT INTO attendance_sessions(lecture_name, doctor_name, code, created_by, expires_at, duration_minutes)
+                    VALUES (?, ?, ?, ?, datetime('now', '+' || ? || ' minutes'), ?)`,
+    [String(lecture_name).trim(), s.user.name, code, s.user.id, dur, dur]);
+  ok(res, one('SELECT * FROM attendance_sessions WHERE id = ?', [info.lastInsertRowid]), 201);
+});
+
+// جلسات QR + عدد الحضور
+route('GET', '/api/attendance/sessions', async (req, res) => {
+  const s = requireRole(req, res, ['staff', 'admin']); if (!s) return;
+  const rows = s.user.role === 'admin'
+    ? q('SELECT * FROM attendance_sessions ORDER BY id DESC LIMIT 50')
+    : q('SELECT * FROM attendance_sessions WHERE created_by = ? ORDER BY id DESC LIMIT 50', [s.user.id]);
+  ok(res, rows.map(r => ({ ...r, attended: one('SELECT COUNT(*) AS c FROM attendance_records WHERE session_id = ?', [r.id]).c, active: new Date(String(r.expires_at).replace(' ', 'T') + 'Z') > new Date() })));
+});
+
+// سجّل حضوري بالكود (طالب)
+route('POST', '/api/attendance/mark', async (req, res) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  const { code } = await parseJson(req);
+  const clean = String(code || '').toUpperCase().trim();
+  if (!clean) return fail(res, 400, 'اكتب الكود أولًا');
+  const session = one('SELECT * FROM attendance_sessions WHERE code = ?', [clean]);
+  if (!session) return fail(res, 404, 'الكود غير صحيح — تأكد منه مع المحاضر');
+  const exp = new Date(String(session.expires_at).replace(' ', 'T') + 'Z');
+  if (exp <= new Date()) return fail(400, 'انتهت صلاحية هذا الرمز — اطلب من المحاضر رمزًا جديدًا');
+  const already = one('SELECT id FROM attendance_records WHERE session_id = ? AND student_id = ?', [session.id, s.user.id]);
+  if (already) return fail(res, 409, 'تم تسجيل حضورك بالفعل لهذه المحاضرة');
+  run('INSERT INTO attendance_records(session_id, student_id) VALUES (?, ?)', [session.id, s.user.id]);
+  const total = one('SELECT COUNT(*) AS c FROM attendance_records WHERE session_id = ?', [session.id]).c;
+  ok(res, { lecture_name: session.lecture_name, attended_at: new Date().toISOString(), attended_count: total });
+});
+
+// تقرير حضور مختصر (موظف/إدارة)
+route('GET', '/api/attendance/report', async (req, res) => {
+  const s = requireRole(req, res, ['staff', 'admin']); if (!s) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const sessionsToday = one(`SELECT COUNT(*) c FROM attendance_sessions WHERE created_at >= ?`, [`${today} 00:00:00`]).c;
+  const recordsToday = one(`SELECT COUNT(*) c FROM attendance_records WHERE attended_at >= ?`, [`${today} 00:00:00`]).c;
+  const totalRecords = one('SELECT COUNT(*) c FROM attendance_records').c;
+  const top = q(`SELECT sess.lecture_name, COUNT(*) c FROM attendance_records r JOIN attendance_sessions sess ON sess.id = r.session_id GROUP BY sess.id ORDER BY c DESC LIMIT 5`);
+  ok(res, { sessionsToday, recordsToday, totalRecords, top });
+});
+
+// الأولوية يدويًا (موظف/إدارة)
+route('POST', '/api/complaints/:id/priority', async (req, res, p) => {
+  const s = requireRole(req, res, ['staff', 'admin']); if (!s) return;
+  const { priority } = await parseJson(req);
+  if (!PRIORITY_VALUES.includes(priority)) return fail(res, 400, 'أولوية غير صالحة');
+  const c = one('SELECT * FROM complaints WHERE id = ?', [p.id]);
+  if (!c) return fail(res, 404, 'الشكوى غير موجودة');
+  if (!canSeeComplaint(s.user, c)) return fail(res, 403, 'ليست ضمن نطاقك');
+  run('UPDATE complaints SET priority = ?, updated_at = datetime(\'now\') WHERE id = ?', [priority, c.id]);
+  logUpdate(c.id, s.user.id, 'priority', `تم تعديل الأولوية يدويًا إلى: ${priority}`);
+  notify(c.student_id, 'تم تحديث أولوية طلبك', `${c.ticket_no} — الأولوية أصبحت ${priority}`, 'complaint', c.id);
+  ok(res, { complaint: loadComplaint(c.id) });
+});
+
+// ===== رضا الطلاب (إدارة) =====
+route('GET', '/api/admin/satisfaction', async (req, res) => {
+  const s = requireRole(req, res, ['admin']); if (!s) return;
+  const rated = q('SELECT c.rating, c.rating_comment, d.name AS dept, c.updated_at FROM complaints c JOIN departments d ON d.id = c.department_id WHERE c.rating IS NOT NULL');
+  const avg5 = rated.length ? rated.reduce((a, r) => a + r.rating, 0) / rated.length : 0;
+  const pct = Math.round(avg5 / 5 * 100);
+  const byDeptMap = {};
+  for (const r of rated) {
+    const d = byDeptMap[r.dept] = byDeptMap[r.dept] || { name: r.dept, sum: 0, count: 0 };
+    d.sum += r.rating; d.count++;
+  }
+  const perDepartment = Object.values(byDeptMap).map(d => ({ name: d.name, avg: Math.round(d.sum / d.count * 10) / 10, pct: Math.round(d.sum / d.count / 5 * 100), count: d.count })).sort((a, b) => b.avg - a.avg);
+  const months = {};
+  for (const r of rated) { const key = String(r.updated_at).slice(0, 7); const m = months[key] = months[key] || { count: 0, sum: 0 }; m.count++; m.sum += r.rating; }
+  const monthly = Object.entries(months).sort((a, b) => a[0].localeCompare(b[0])).slice(-6).map(([month, v]) => ({ month, avg: Math.round(v.sum / v.count * 10) / 10, count: v.count }));
+  const recentComments = q(`SELECT c.rating, c.rating_comment, d.name AS dept, u.name AS student_name FROM complaints c JOIN departments d ON d.id = c.department_id JOIN users u ON u.id = c.student_id WHERE c.rating IS NOT NULL AND c.rating_comment IS NOT NULL ORDER BY c.updated_at DESC LIMIT 8`);
+  ok(res, { avg: Math.round(avg5 * 10) / 10, satisfactionPct: pct, total: rated.length, perDepartment, monthly, recentComments, best: perDepartment[0] || null, worst: perDepartment[perDepartment.length - 1] || null });
+});
+
+// ===== المستندات الذكية (طالب) =====
+route('POST', '/api/documents/save', async (req, res) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  const { filename, doc_type, extracted, missing, status } = await parseJson(req);
+  if (!filename || !doc_type) return fail(res, 400, 'بيانات المستند غير مكتملة');
+  const info = run('INSERT INTO document_analyses(user_id, filename, doc_type, extracted, missing, status) VALUES (?,?,?,?,?,?)',
+    [s.user.id, String(filename).slice(0, 200), String(doc_type).slice(0, 80), String(extracted || '').slice(0, 6000), Array.isArray(missing) ? missing.map(m => String(m).slice(0, 80)).slice(0, 20).join('، ') : String(missing || '').slice(0, 500), status === 'complete' ? 'complete' : 'incomplete']);
+  ok(res, one('SELECT * FROM document_analyses WHERE id = ?', [info.lastInsertRowid]), 201);
+});
+route('GET', '/api/documents/my', async (req, res) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  ok(res, q('SELECT * FROM document_analyses WHERE user_id = ? ORDER BY created_at DESC LIMIT 30', [s.user.id]));
+});
+route('DELETE', '/api/documents/:id', async (req, res, p) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  run('DELETE FROM document_analyses WHERE id = ? AND user_id = ?', [p.id, s.user.id]);
+  ok(res, { deleted: Number(p.id) });
+});
+
+// ===== المفقودات والموجودات =====
+route('GET', '/api/lost-found', async (req, res) => {
+  const s = requireAuth(req, res); if (!s) return;
+  const url = new URL(req.url, 'http://x');
+  let sql = `SELECT lf.*, u.name AS owner_name FROM lost_found lf JOIN users u ON u.id = lf.student_id WHERE 1=1`;
+  const params = [];
+  if (url.searchParams.get('type')) { sql += ' AND lf.type = ?'; params.push(url.searchParams.get('type')); }
+  if (url.searchParams.get('status')) { sql += ' AND lf.status = ?'; params.push(url.searchParams.get('status')); }
+  if (url.searchParams.get('category')) { sql += ' AND lf.category = ?'; params.push(url.searchParams.get('category')); }
+  if (url.searchParams.get('q')) { const like = `%${url.searchParams.get('q')}%`; sql += ' AND (lf.title LIKE ? OR lf.description LIKE ? OR lf.location LIKE ?)'; params.push(like, like, like); }
+  sql += ` ORDER BY CASE lf.status WHEN 'open' THEN 0 ELSE 1 END, lf.created_at DESC LIMIT 100`;
+  ok(res, q(sql, params).map(x => ({ ...x, can_edit: x.student_id === s.user.id || s.user.role !== 'student' })));
+});
+route('POST', '/api/lost-found', async (req, res) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  const { type, title, description, category, location, item_date, image } = await parseJson(req);
+  if (!['lost', 'found'].includes(type)) return fail(res, 400, 'حدد نوع الإعلان');
+  if (!title || String(title).trim().length < 4) return fail(res, 400, 'اكتب عنوانًا واضحًا (4 أحرف+)');
+  if (image && !(String(image).startsWith('data:image/') && String(image).length < 3500000) && !String(image).startsWith('/uploads/')) return fail(res, 400, 'الصورة غير صالحة أو أكبر من 2.5MB');
+  const info = run('INSERT INTO lost_found(student_id, type, title, description, category, location, item_date, image) VALUES (?,?,?,?,?,?,?,?)',
+    [s.user.id, type, String(title).trim(), String(description || '').trim().slice(0, 1500) || null, category || 'أخرى', String(location || '').trim().slice(0, 200) || null, item_date || new Date().toISOString().slice(0, 10), image || null]);
+  ok(res, one('SELECT * FROM lost_found WHERE id = ?', [info.lastInsertRowid]), 201);
+});
+route('PATCH', '/api/lost-found/:id/status', async (req, res, p) => {
+  const s = requireAuth(req, res); if (!s) return;
+  const { status } = await parseJson(req);
+  if (!['open', 'found', 'returned'].includes(status)) return fail(res, 400, 'حالة غير صالحة');
+  const item = one('SELECT * FROM lost_found WHERE id = ?', [p.id]);
+  if (!item) return fail(res, 404, 'الإعلان غير موجود');
+  if (item.student_id !== s.user.id && s.user.role === 'student') return fail(res, 403, 'يمكنك تعديل إعلاناتك فقط');
+  run('UPDATE lost_found SET status = ? WHERE id = ?', [status, item.id]);
+  ok(res, one('SELECT * FROM lost_found WHERE id = ?', [item.id]));
+});
+route('POST', '/api/lost-found/:id/contact', async (req, res, p) => {
+  const s = requireAuth(req, res); if (!s) return;
+  const { message } = await parseJson(req);
+  if (!message || String(message).trim().length < 3) return fail(res, 400, 'اكتب رسالتك');
+  const item = one('SELECT * FROM lost_found WHERE id = ?', [p.id]);
+  if (!item) return fail(res, 404, 'الإعلان غير موجود');
+  run('INSERT INTO lost_found_contacts(item_id, user_id, message) VALUES (?,?,?)', [item.id, s.user.id, String(message).trim().slice(0, 1000)]);
+  if (item.student_id !== s.user.id) notify(item.student_id, `رسالة بخصوص "${item.title.slice(0, 40)}"`, `${s.user.name}: ${String(message).trim().slice(0, 100)}`, 'lostfound', item.id);
+  else for (const a of q('SELECT id FROM users WHERE role IN (\'staff\',\'admin\') AND active = 1')) notify(a.id, `تواصل بخصوص إعلان "${item.title.slice(0, 40)}"`, `${s.user.name}: ${String(message).trim().slice(0, 100)}`, 'lostfound', item.id);
+  ok(res, { ok: true });
+});
+route('GET', '/api/lost-found/:id/contacts', async (req, res, p) => {
+  const s = requireAuth(req, res); if (!s) return;
+  const item = one('SELECT * FROM lost_found WHERE id = ?', [p.id]);
+  if (!item) return fail(res, 404, 'الإعلان غير موجود');
+  if (item.student_id !== s.user.id && s.user.role === 'student') return fail(res, 403, 'لا تملك صلاحية');
+  ok(res, q('SELECT c.*, u.name AS sender_name, u.role AS sender_role FROM lost_found_contacts c JOIN users u ON u.id = c.user_id WHERE c.item_id = ? ORDER BY c.created_at ASC', [item.id]));
+});
+route('DELETE', '/api/lost-found/:id', async (req, res, p) => {
+  const s = requireAuth(req, res); if (!s) return;
+  const item = one('SELECT * FROM lost_found WHERE id = ?', [p.id]);
+  if (!item) return fail(res, 404, 'الإعلان غير موجود');
+  if (item.student_id !== s.user.id && s.user.role === 'student') return fail(res, 403, 'يمكنك حذف إعلاناتك فقط');
+  run('DELETE FROM lost_found WHERE id = ?', [item.id]);
+  ok(res, { deleted: item.id });
+});
+
+// ===== الإعلانات الجامعية =====
+route('GET', '/api/announcements', async (req, res) => {
+  const s = requireAuth(req, res); if (!s) return;
+  ok(res, q('SELECT a.*, u.name AS admin_name FROM announcements a LEFT JOIN users u ON u.id = a.admin_id ORDER BY a.created_at DESC LIMIT 10'));
+});
+route('POST', '/api/admin/announcements', async (req, res) => {
+  const s = requireRole(req, res, ['admin']); if (!s) return;
+  const { title, body } = await parseJson(req);
+  if (!title || !body || String(title).trim().length < 4 || String(body).trim().length < 10) return fail(res, 400, 'اكتب عنوان (4+ أحرف) ونص (10+ أحرف)');
+  const info = run('INSERT INTO announcements(admin_id, title, body) VALUES (?,?,?)', [s.user.id, String(title).trim(), String(body).trim()]);
+  for (const u of q('SELECT id FROM users WHERE active = 1 AND role IN (\'student\',\'staff\')')) notify(u.id, '📢 إعلان جامعي جديد', String(title).trim().slice(0, 120), 'announcement', info.lastInsertRowid);
+  ok(res, one('SELECT * FROM announcements WHERE id = ?', [info.lastInsertRowid]), 201);
+});
+route('DELETE', '/api/admin/announcements/:id', async (req, res, p) => {
+  const s = requireRole(req, res, ['admin']); if (!s) return;
+  run('DELETE FROM announcements WHERE id = ?', [p.id]);
+  ok(res, { deleted: Number(p.id) });
+});
+
+// ===== اسأل الإدارة (AI على بيانات حقيقية) =====
+route('POST', '/api/admin/ask', async (req, res) => {
+  const s = requireRole(req, res, ['admin']); if (!s) return;
+  const { question } = await parseJson(req);
+  const qText = String(question || '').trim();
+  if (qText.length < 3) return fail(res, 400, 'اكتب السؤال');
+  ok(res, adminAsk(qText));
 });
 
 // ===== Static files =====

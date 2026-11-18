@@ -62,13 +62,121 @@ function initDb() {
     details TEXT NOT NULL,
     attachment TEXT,
     status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','in_progress','resolved','rejected')),
-    priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high','urgent')),
+    priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high','urgent','critical')),
     ai_category TEXT,
     ai_confidence REAL,
     rating INTEGER,
+    rating_comment TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     resolved_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS timetable (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    day TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    course TEXT NOT NULL,
+    doctor TEXT NOT NULL,
+    room TEXT NOT NULL,
+    course_code TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS exams (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course TEXT NOT NULL,
+    exam_date TEXT NOT NULL,
+    room TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL DEFAULT 120
+  );
+
+  CREATE TABLE IF NOT EXISTS grades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course TEXT NOT NULL,
+    credit_hours REAL NOT NULL DEFAULT 3,
+    score REAL NOT NULL,
+    semester TEXT NOT NULL DEFAULT '2025/2026 - فصل أول'
+  );
+
+  CREATE TABLE IF NOT EXISTS fees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    term TEXT NOT NULL,
+    label TEXT NOT NULL,
+    amount REAL NOT NULL,
+    paid REAL NOT NULL DEFAULT 0,
+    due_date TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS attendance_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course TEXT NOT NULL,
+    attended INTEGER NOT NULL,
+    total INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS attendance_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lecture_name TEXT NOT NULL,
+    doctor_name TEXT,
+    code TEXT NOT NULL UNIQUE,
+    created_by INTEGER REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL DEFAULT 60
+  );
+
+  CREATE TABLE IF NOT EXISTS attendance_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE,
+    student_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    attended_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(session_id, student_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id INTEGER REFERENCES users(id),
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    audience TEXT NOT NULL DEFAULT 'all',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS lost_found (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN ('lost','found')),
+    title TEXT NOT NULL,
+    description TEXT,
+    category TEXT NOT NULL DEFAULT 'أخرى',
+    location TEXT,
+    item_date TEXT,
+    image TEXT,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','found','returned')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS lost_found_contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL REFERENCES lost_found(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS document_analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    doc_type TEXT NOT NULL,
+    extracted TEXT,
+    missing TEXT,
+    status TEXT NOT NULL DEFAULT 'incomplete',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS complaint_updates (
@@ -139,8 +247,52 @@ function initDb() {
   CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
   `);
 
+  // ترقية الجداول القديمة (إضافة critical + rating_comment)
+  migrate();
   seed();
+  seedExtras();
   return db;
+}
+
+function migrate() {
+  const sql = (one(`SELECT sql FROM sqlite_master WHERE type='table' AND name='complaints'`) || {}).sql || '';
+  if (!sql.includes('critical')) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      CREATE TABLE complaints_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_no TEXT NOT NULL UNIQUE,
+        student_id INTEGER NOT NULL REFERENCES users(id),
+        type_id INTEGER REFERENCES complaint_types(id),
+        department_id INTEGER NOT NULL REFERENCES departments(id),
+        assigned_to INTEGER REFERENCES users(id),
+        title TEXT NOT NULL,
+        details TEXT NOT NULL,
+        attachment TEXT,
+        status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','in_progress','resolved','rejected')),
+        priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high','urgent','critical')),
+        ai_category TEXT,
+        ai_confidence REAL,
+        rating INTEGER,
+        rating_comment TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        resolved_at TEXT
+      );
+      INSERT INTO complaints_new(id, ticket_no, student_id, type_id, department_id, assigned_to, title, details, attachment, status, priority, ai_category, ai_confidence, rating, created_at, updated_at, resolved_at)
+        SELECT id, ticket_no, student_id, type_id, department_id, assigned_to, title, details, attachment, status, priority, ai_category, ai_confidence, rating, created_at, updated_at, resolved_at FROM complaints;
+      DROP TABLE complaints;
+      ALTER TABLE complaints_new RENAME TO complaints;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+  const cols = q('PRAGMA table_info(complaints)');
+  if (!cols.some(c => c.name === 'rating_comment')) {
+    run('ALTER TABLE complaints ADD COLUMN rating_comment TEXT');
+  }
+  // إعادة إنشاء الـ indexes بعد أي إعادة بناء للجدول
+  run('CREATE INDEX IF NOT EXISTS idx_complaints_dept ON complaints(department_id, status)');
+  run('CREATE INDEX IF NOT EXISTS idx_complaints_student ON complaints(student_id)');
 }
 
 function q(sql, params = []) { return db.prepare(sql).all(...params); }
@@ -296,6 +448,87 @@ function seed() {
   note(studentOmar, 'تم حل شكواك', 'تم حل مشكلتك بخصوص "طلب استخراج شهادة قيد" — قيّم التجربة من داخل الشكاوى');
 
   console.log('[db] Seed complete: users, departments, complaints, knowledge base ✓');
+}
+
+// =====================================================
+// بيانات أكاديمية وخدمات ذكية — تُملأ للمرة الأولى فقط
+// (استبدلها ببيانات المعهد الحقيقية عند الربط)
+// =====================================================
+function seedExtras() {
+  if (one('SELECT COUNT(*) AS c FROM timetable').c > 0) return;
+
+  // ---- جدول المحاضرات: الفرقة الثانية — هندسة بيانات ----
+  const tt = [
+    ['السبت', '09:00', '11:00', 'قواعد البيانات', 'د/ أسامة فؤاد', 'قاعة ب12', 'CS-201'],
+    ['الأحد', '11:00', '13:00', 'برمجة كائنية التوجه', 'د/ منى عوض', 'معمل 3', 'CS-202'],
+    ['الاثنين', '09:00', '11:00', 'شبكات الحاسب', 'د/ حازم نبيل', 'قاعة أ7', 'CS-203'],
+    ['الثلاثاء', '13:00', '15:00', 'الرياضيات المتقدمة 2', 'د/ رانيا سمير', 'قاعة ب4', 'MA-204'],
+    ['الأربعاء', '09:00', '11:00', 'رسم هندسي', 'د/ علي منصور', 'معمل الرسم', 'EN-205'],
+    ['الخميس', '11:00', '13:00', 'قواعد البيانات — تمارين', 'م/ هبة رشاد', 'معمل 2', 'CS-201T'],
+  ];
+  for (const row of tt) run('INSERT INTO timetable(day, start_time, end_time, course, doctor, room, course_code) VALUES (?,?,?,?,?,?,?)', row);
+
+  // ---- الامتحانات القادمة (تواريخ نسبية من اليوم) ----
+  const exams = [
+    ['قواعد البيانات', 3, 'قاعة ب12', 120],
+    ['برمجة كائنية التوجه', 9, 'معمل 3', 90],
+    ['شبكات الحاسب', 16, 'قاعة أ7', 120],
+    ['الرياضيات المتقدمة 2', 23, 'قاعة ب4', 90],
+  ];
+  for (const [course, inDays, room, dur] of exams) {
+    run(`INSERT INTO exams(course, exam_date, room, duration_minutes) VALUES (?, datetime('now', '+${inDays} days'), ?, ?)`, [course, room, dur]);
+  }
+
+  // ---- الدرجات والمعدل — عمر (id=6) وسارة (id=7) ----
+  const gradeRows = [
+    // [student_id, course, credit_hours, score]
+    [6, 'قواعد البيانات', 4, 84], [6, 'برمجة كائنية التوجه', 4, 91], [6, 'شبكات الحاسب', 3, 66], [6, 'الرياضيات المتقدمة 2', 3, 78], [6, 'رسم هندسي', 2, 88], [6, 'مقرر فني في الهندسة', 2, 73],
+    [7, 'قواعد البيانات', 4, 77], [7, 'برمجة كائنية التوجه', 4, 85], [7, 'شبكات الحاسب', 3, 71], [7, 'الرياضيات المتقدمة 2', 3, 62], [7, 'رسم هندسي', 2, 90], [7, 'مقرر فني في الهندسة', 2, 68],
+  ];
+  for (const r of gradeRows) run('INSERT INTO grades(student_id, course, credit_hours, score) VALUES (?,?,?,?)', r);
+
+  // ---- المصروفات ----
+  const fees = [
+    [6, 'فصل أول 2025/2026', 'القسط التاني — المصروفات الدراسية', 25200, 25200, '2026-02-15'],
+    [6, 'فصل أول 2025/2026', 'التأمين والأوراق', 1500, 1500, '2025-09-20'],
+    [6, 'فصل ثاني 2026', 'القسط الأول — المصروفات الدراسية', 25200, 0, '2026-03-01'],
+    [7, 'فصل أول 2025/2026', 'القسط التاني — المصروفات الدراسية', 25200, 16800, '2026-02-15'],
+    [7, 'فصل أول 2025/2026', 'التأمين والأوراق', 1500, 1500, '2025-09-20'],
+    [7, 'فصل ثاني 2026', 'القسط الأول — المصروفات الدراسية', 25200, 0, '2026-03-01'],
+  ];
+  for (const f of fees) run('INSERT INTO fees(student_id, term, label, amount, paid, due_date) VALUES (?,?,?,?,?,?)', f);
+
+  // ---- الحضور والغياب ----
+  const att = [
+    // [student_id, course, attended, total]
+    [6, 'قواعد البيانات', 22, 24], [6, 'برمجة كائنية التوجه', 23, 24], [6, 'شبكات الحاسب', 19, 24], [6, 'الرياضيات المتقدمة 2', 20, 22], [6, 'رسم هندسي', 21, 22], [6, 'مقرر فني في الهندسة', 20, 22],
+    [7, 'قواعد البيانات', 21, 24], [7, 'برمجة كائنية التوجه', 24, 24], [7, 'شبكات الحاسب', 18, 24], [7, 'الرياضيات المتقدمة 2', 16, 22], [7, 'رسم هندسي', 22, 22], [7, 'مقرر فني في الهندسة', 21, 22],
+  ];
+  for (const a of att) run('INSERT INTO attendance_stats(student_id, course, attended, total) VALUES (?,?,?,?)', a);
+
+  // ---- إعلان جامعي (يظهر كبانر لكل طالب) ----
+  const ann = run('INSERT INTO announcements(admin_id, title, body) VALUES (?,?,?)',
+    [1, 'انطلاق الفصل الدراسي الثاني — جدول المحاضرات متاح', 'نود إحاطتكم بأنه تم فتح جداول المحاضرات والامتحانات النهائية على المنصة، والرجاء الالتزام بنسبة حضور لا تقل عن 75%، والحضور عبر QR يوم كل محاضرة.']);
+  // كل طالب يصله إشعار بالإعلان
+  for (const s of q('SELECT id FROM users WHERE role = \'student\' AND active = 1')) {
+    notifyInternal(s.id, '📢 إعلان جامعي جديد', 'انطلاق الفصل الدراسي الثاني — راجع البانر في الرئيسية', 'announcement', ann.lastInsertRowid);
+  }
+
+  // ---- مفقودات وموجودات تجريبية ----
+  const lf = [
+    [7, 'lost', 'شنطة سوداء فيها لابتوب', 'شنطة لابتوب سوداء عليها ملصق «هندسة بيانات» فُقدت جنب كافتيريا المبنى الرئيسي، فيها لابتوب ديل + شاحن + دفاتر.', 'إلكترونيات', 'الكافتيريا — المبنى الرئيسي', '2026-11-12', 1],
+    [6, 'found', 'كارنيه طالب (سارة محمود)', 'تم العثور على كارنيه طالب باسم سارة محمود رقم جامعي 20230215 في ممرات مبنى ب بجوار قاعة 4.', 'أوراق وبطاقات', 'مبنى ب — الدور الأول', '2026-11-15', 1],
+    [7, 'lost', 'مفتاح سيارة تويوتا', 'مفتاح سيارة تويوتا كامري على حلقة جلدية بني، ضاع في جراج المعهد أو أمام البوابة الشمالية.', 'مفاتيح', 'الجراج / البوابة الشمالية', '2026-11-10', 1],
+  ];
+  for (const [sid, type, title, desc, cat, loc, date, seed] of lf) {
+    run('INSERT INTO lost_found(student_id, type, title, description, category, location, item_date, status) VALUES (?,?,?,?,?,?,?,\'open\')', [sid, type, title, desc, cat, loc, date]);
+  }
+
+  console.log('[db] Extras seeded: timetable, exams, grades, fees, attendance, announcement, lost&found ✓');
+}
+
+function notifyInternal(userId, title, body, refType, refId) {
+  run('INSERT INTO notifications(user_id, title, body, ref_type, ref_id) VALUES (?,?,?,?,?)', [userId, title, body || null, refType || null, refId || null]);
 }
 
 module.exports = { initDb, getDb: () => db, q, one, run, hashPassword, verifyPassword };

@@ -19,6 +19,8 @@ let searchTimer = null;
     if (s === 'complaints') loadComplaints();
     if (s === 'notifs') loadNotifications();
     if (s === 'dashboard') loadStats();
+    if (s === 'attendance') loadSessions();
+    if (s === 'lostfound') loadStaffLostFound();
   });
 
   await Promise.all([loadStats(), loadUrgent(), loadTransferDepartments()]);
@@ -109,6 +111,14 @@ function renderModal({ complaint: c, messages, updates }) {
   $('#mdCode').textContent = c.student_code || '—';
   $('#mdEmail').textContent = c.student_email || '—';
   $('#mdType').textContent = c.type_name || '—';
+  $('#modalPriority').value = c.priority || 'medium';
+  const mdRating = $('#mdRating');
+  if (c.rating) {
+    mdRating.style.display = 'flex';
+    $('#mdRatingValue').textContent = '★'.repeat(c.rating) + '☆'.repeat(5 - c.rating) + ` (${c.rating}/5)`;
+    $('#mdRatingComment').style.display = c.rating_comment ? 'block' : 'none';
+    if (c.rating_comment) $('#mdRatingComment').textContent = `💬 ${c.rating_comment}`;
+  } else { mdRating.style.display = 'none'; $('#mdRatingComment').style.display = 'none'; }
   $('#modalDetails').textContent = c.details;
   $('#modalAttachment').innerHTML = c.attachment ? `<a class="link" href="${escapeHtml(c.attachment)}" target="_blank" rel="noopener">📎 عرض المرفق</a>` : '';
 
@@ -217,3 +227,118 @@ async function loadNotifications() {
   }));
 }
 $('#markAllBtn').addEventListener('click', async () => { await api('/api/notifications/read-all', { method: 'POST' }); loadNotifications(); refreshNotifBadge(); toast('تم تعليم الكل كمقروء'); });
+
+
+// ============================================================
+//  الميزات المتقدمة: QR الحضور + الأولوية اليدوية + المفقودات
+// ============================================================
+
+// الأولوية يدويًا من داخل المودال
+$('#modalPriority').addEventListener('change', async () => {
+  if (!currentComplaintId) return;
+  const r = await api(`/api/complaints/${currentComplaintId}/priority`, { method: 'POST', body: { priority: $('#modalPriority').value } });
+  if (!r.ok) return toast(r.error, 'err');
+  toast('تم تعديل الأولوية ✓');
+  reloadModal();
+});
+
+// ---------- حضور بـ QR ----------
+let currentQrSession = null, qrPollTimer = null, qrCountdownTimer = null;
+$('#createSessionForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('#createSessionBtn'); btn.disabled = true;
+  const r = await api('/api/attendance/sessions', { method: 'POST', body: { lecture_name: $('#sessionLecture').value.trim(), duration_minutes: Number($('#sessionDuration').value) } });
+  btn.disabled = false;
+  if (!r.ok) return toast(r.error, 'err');
+  currentQrSession = r.data;
+  showQrSession(r.data);
+  loadSessions();
+  toast('تم إنشاء جلسة الحضور ✓');
+});
+function showQrSession(session) {
+  const wrap = $('#qrActiveWrap');
+  wrap.style.display = 'grid';
+  $('#qrCodeText').textContent = session.code;
+  // توليد QR عبر CDN مع fallback لعرض الكود النصي فقط
+  const box = $('#qrCanvas');
+  box.innerHTML = '';
+  if (window.QRCode) {
+    new QRCode(box, { text: `NEXUS-ATTEND:${session.code}`, width: 208, height: 208, colorDark: '#0A1B33', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+  } else {
+    box.innerHTML = '<p style="font-size:.72rem;color:var(--muted);padding:.5rem">مكتبة QR غير متاحة — الكود مكتوب أسفل</p>';
+  }
+  const exp = new Date(String(session.expires_at).replace(' ', 'T') + 'Z');
+  clearInterval(qrCountdownTimer);
+  const tick = () => {
+    const ms = exp - Date.now();
+    if (ms <= 0) { $('#qrExpiry').textContent = 'انتهت صلاحية الكود — أنشئ جلسة جديدة'; clearInterval(qrCountdownTimer); clearInterval(qrPollTimer); return; }
+    const m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000);
+    $('#qrExpiry').textContent = `تنتهي الصلاحية خلال ${m}:${String(s).padStart(2, '0')}`;
+  };
+  tick(); qrCountdownTimer = setInterval(tick, 1000);
+  clearInterval(qrPollTimer);
+  qrPollTimer = setInterval(async () => {
+    const r = await api('/api/attendance/sessions');
+    const mine = r.ok ? r.data.find(x => x.id === session.id) : null;
+    if (mine) $('#qrLiveCount').textContent = `${mine.attended} طالب سجل حضورًا`;
+  }, 4000);
+}
+async function loadSessions() {
+  const r = await api('/api/attendance/sessions');
+  const tbody = $('#sessionsTableBody');
+  if (!r.ok) return;
+  if (!r.data.length) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted)">لسه مفيش جلسات — أنشئ أول جلسة</td></tr>'; return; }
+  tbody.innerHTML = r.data.map(s => `
+    <tr><td style="font-size:.82rem"><b>${escapeHtml(s.lecture_name)}</b></td>
+      <td dir="ltr" style="font-family:Consolas,monospace;font-weight:800">${escapeHtml(s.code)}</td>
+      <td>${s.attended} طالب</td>
+      <td>${s.active ? '<span class="badge resolved">نشطة</span>' : '<span class="priority low">منتهية</span>'}</td></tr>`).join('');
+}
+$('#refreshSessions').addEventListener('click', loadSessions);
+
+// ---------- المفقودات والموجودات (إدارة) ----------
+let staffLostTimer = null;
+['staffLfStatus', 'staffLfType'].forEach(id => document.getElementById(id).addEventListener('change', loadStaffLostFound));
+$('#staffLfSearch').addEventListener('input', () => { clearTimeout(staffLostTimer); staffLostTimer = setTimeout(loadStaffLostFound, 300); });
+async function loadStaffLostFound() {
+  const box = $('#staffLostList');
+  box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:.8rem">جارِ التحميل...</p>';
+  const params = new URLSearchParams();
+  if ($('#staffLfStatus').value) params.set('status', $('#staffLfStatus').value);
+  if ($('#staffLfType').value) params.set('type', $('#staffLfType').value);
+  if ($('#staffLfSearch').value.trim()) params.set('q', $('#staffLfSearch').value.trim());
+  const r = await api('/api/lost-found' + (params.toString() ? '?' + params : ''));
+  if (!r.ok) { box.innerHTML = `<p style="color:var(--danger)">${escapeHtml(r.error)}</p>`; return; }
+  $('#staffLostCount').textContent = `${r.data.length} إعلان`;
+  if (!r.data.length) { box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:1.2rem">لا توجد إعلانات بهذه الفلاتر.</p>'; return; }
+  const LF_STATUS = { open: 'مفتوح', found: 'تم العثور عليه', returned: 'تم التسليم' };
+  box.innerHTML = r.data.map(item => `
+    <div class="complaint-item" style="align-items:flex-start;gap:.8rem">
+      <div style="flex:1;min-width:0">
+        <span class="lost-type ${item.type}">${item.type === 'lost' ? '🔴 مفقود' : '🟢 موجود'}</span>
+        <b style="display:block;margin:.25rem 0 .15rem">${escapeHtml(item.title)}</b>
+        <span style="font-size:.73rem;color:var(--muted)">${escapeHtml(item.description || '')}</span><br>
+        <span style="font-size:.7rem;color:var(--muted)">📍 ${escapeHtml(item.location || '—')} · 📅 ${escapeHtml(item.item_date || '')} · بواسطة ${escapeHtml(item.owner_name)}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.35rem;align-items:flex-end">
+        <select class="staff-lf-status" data-id="${item.id}" style="border:1.5px solid var(--line);border-radius:8px;padding:.3rem .5rem;font-size:.74rem">
+          <option value="open" ${item.status === 'open' ? 'selected' : ''}>مفتوح</option>
+          <option value="found" ${item.status === 'found' ? 'selected' : ''}>تم العثور عليه</option>
+          <option value="returned" ${item.status === 'returned' ? 'selected' : ''}>تم التسليم</option>
+        </select>
+        <button class="btn btn-outline btn-sm" data-staff-lf-contact="${item.id}">💬 تواصل</button>
+      </div>
+    </div>`).join('');
+  box.querySelectorAll('.staff-lf-status').forEach(sel => sel.addEventListener('change', async () => {
+    const r = await api(`/api/lost-found/${sel.dataset.id}/status`, { method: 'PATCH', body: { status: sel.value } });
+    if (!r.ok) return toast(r.error, 'err');
+    toast('تم تحديث الحالة'); loadStaffLostFound();
+  }));
+  box.querySelectorAll('[data-staff-lf-contact]').forEach(btn => btn.addEventListener('click', async () => {
+    const msg = prompt('اكتب رسالتك لصاحب الإعلان:');
+    if (!msg) return;
+    const r = await api(`/api/lost-found/${btn.dataset.staffLfContact}/contact`, { method: 'POST', body: { message: msg } });
+    if (!r.ok) return toast(r.error, 'err');
+    toast('تم إرسال رسالتك — سيصله إشعار ✓');
+  }));
+}

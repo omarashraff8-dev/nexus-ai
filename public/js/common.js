@@ -37,7 +37,7 @@ function fmtDay(str) {
 }
 
 const STATUS = { new: 'جديدة', in_progress: 'قيد المراجعة', resolved: 'تم الحل', rejected: 'مرفوضة' };
-const PRIORITY = { low: 'منخفضة', medium: 'متوسطة', high: 'مرتفعة', urgent: 'عاجلة' };
+const PRIORITY = { low: 'منخفضة', medium: 'متوسطة', high: 'مرتفعة', urgent: 'عاجلة', critical: 'حرجة' };
 const statusBadge = s => `<span class="badge ${s}">${STATUS[s] || s}</span>`;
 const priorityBadge = p => `<span class="priority ${p}">${PRIORITY[p] || p}</span>`;
 

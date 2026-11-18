@@ -310,6 +310,7 @@ async function openViewComplaint(id) {
   if (!r.ok) { toast(r.error, 'err'); viewModal.classList.remove('open'); return; }
   const { complaint: c, messages, updates } = r.data;
   $('#viewModalTitle').textContent = `${c.ticket_no} — ${c.title}`;
+  $('#viewPriority').value = c.priority || 'medium';
   $('#viewHeadInfo').innerHTML = `<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">${statusBadge(c.status)} ${priorityBadge(c.priority)}<span style="font-size:.75rem;color:var(--muted)">الطالب: <b>${escapeHtml(c.student_name)}</b> (${escapeHtml(c.student_code || '—')}) · القسم: <b>${escapeHtml(c.department_name)}</b> · ${fmtDate(c.created_at)}</span></div>`;
   $('#viewDetails').textContent = c.details;
   const aiBox = $('#viewAiBox');
@@ -426,3 +427,160 @@ async function loadNotifications() {
   }));
 }
 $('#markAllBtn').addEventListener('click', async () => { await api('/api/notifications/read-all', { method: 'POST' }); loadNotifications(); refreshNotifBadge(); toast('تم تعليم الكل كمقروء'); });
+
+
+// ============================================================
+//  الميزات المتقدمة: اسأل الإدارة (AI) + رضا الطلاب + الإعلانات + المفقودات
+// ============================================================
+
+// ---------- التحليلات الذكية — اسأل ----------
+const askForm = $('#askForm'), askInput = $('#askInput'), askResultCard = $('#askResultCard');
+async function askAdmin(question) {
+  const q = String(question || '').trim();
+  if (q.length < 3) return toast('اكتب السؤال أولًا', 'err');
+  const btn = $('#askSubmitBtn'); btn.disabled = true; btn.textContent = 'يحسب...';
+  askResultCard.style.display = 'block';
+  $('#askAnswer').textContent = 'المساعد الذكي يقرأ بياناتك...';
+  $('#askStats').innerHTML = ''; $('#askSuggestions').innerHTML = ''; $('#askChart').style.display = 'none';
+  const r = await api('/api/admin/ask', { method: 'POST', body: { question: q } });
+  btn.disabled = false; btn.textContent = 'اسأل ✨';
+  if (!r.ok) { $('#askAnswer').textContent = r.error || 'تعذرت الإجابة'; return; }
+  const d = r.data;
+  $('#askAnswer').textContent = d.answer;
+  $('#askStats').innerHTML = (d.stats || []).map(s => `<span class="ask-stat">${escapeHtml(s.label)}: <b>${escapeHtml(String(s.value))}</b></span>`).join('');
+  $('#askSuggestions').innerHTML = (d.suggestions || []).map(s => `<button class="ask-chip" data-q="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('');
+  $('#askSuggestions').querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', () => askAdmin(b.dataset.q)));
+  if (d.chart && d.chart.labels && d.chart.labels.length) {
+    const canvas = $('#askChart');
+    canvas.style.display = 'block';
+    if (d.chart.type === 'line') drawLineChart(canvas, d.chart.labels.map((l, i) => ({ label: l, value: d.chart.values[i] })));
+    else drawBarChart(canvas, d.chart.labels.map((l, i) => ({ label: l, value: d.chart.values[i], extra: '' })));
+  }
+}
+askForm.addEventListener('submit', e => { e.preventDefault(); askAdmin(askInput.value); });
+$('#askChips').addEventListener('click', e => {
+  const b = e.target.closest('[data-q]'); if (b) { askInput.value = b.dataset.q; askAdmin(b.dataset.q); }
+});
+
+// ---------- رضا الطلاب ----------
+async function loadSatisfaction() {
+  const r = await api('/api/admin/satisfaction');
+  if (!r.ok) return;
+  const d = r.data;
+  $('#satAvg').textContent = d.avg.toFixed(1);
+  $('#satPct').textContent = d.satisfactionPct + '%';
+  $('#satTotal').textContent = d.total;
+  $('#satBest').textContent = d.best ? d.best.name.slice(0, 18) : '—';
+  $('#satWorst').textContent = d.worst ? d.worst.name.slice(0, 18) : '—';
+  drawBarChart($('#satDeptChart'), (d.perDepartment || []).map(x => ({ label: x.name, value: x.pct, extra: `${x.count} تقييم` })));
+  drawLineChart($('#satMonthlyChart'), (d.monthly || []).map(m => ({ label: m.month.slice(5), value: m.avg })));
+  const box = $('#satComments');
+  const comments = d.recentComments || [];
+  if (!comments.length) { box.innerHTML = '<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:.8rem">لا توجد تعليقات بعد — أول تقييم بعد حل شكوى هيظهر هنا.</p>'; return; }
+  box.innerHTML = comments.map(c => `
+    <div class="comment-item">
+      <div>${'★'.repeat(c.rating)}${'☆'.repeat(5 - c.rating)} <span style="color:var(--warn);font-weight:800">${c.rating}/5</span></div>
+      <p style="margin:.2rem 0">${escapeHtml(c.rating_comment)}</p>
+      <div class="meta"><span>${escapeHtml(c.student_name)}</span><span>${escapeHtml(c.dept)}</span></div>
+    </div>`).join('');
+}
+
+// ---------- الإعلانات الجامعية ----------
+$('#announcementForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('#annSubmitBtn'); btn.disabled = true;
+  const r = await api('/api/admin/announcements', { method: 'POST', body: { title: $('#annTitle').value.trim(), body: $('#annBody').value.trim() } });
+  btn.disabled = false;
+  if (!r.ok) return toast(r.error, 'err');
+  toast('تم نشر الإعلان وإشعار الجميع ✓');
+  e.target.reset();
+  loadAnnouncements();
+});
+async function loadAnnouncements() {
+  const box = $('#announcementsList');
+  const r = await api('/api/announcements');
+  if (!r.ok) { box.innerHTML = `<p style="color:var(--danger)">${escapeHtml(r.error)}</p>`; return; }
+  if (!r.data.length) { box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:1rem">لسه مفيش إعلانات — انشر أول إعلان</p>'; return; }
+  box.innerHTML = r.data.map(a => `
+    <div class="complaint-item" style="align-items:flex-start">
+      <span style="min-width:0"><b>${escapeHtml(a.title)}</b><br><span style="font-size:.79rem;color:var(--muted)">${escapeHtml(a.body)}</span><br><span style="font-size:.67rem;color:var(--muted)">بواسطة ${escapeHtml(a.admin_name || 'الإدارة')} · ${fmtDate(a.created_at)}</span></span>
+      <button class="btn btn-danger btn-sm" data-ann-delete="${a.id}">حذف</button>
+    </div>`).join('');
+  box.querySelectorAll('[data-ann-delete]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('حذف الإعلان؟')) return;
+    const r2 = await api(`/api/admin/announcements/${btn.dataset.annDelete}`, { method: 'DELETE' });
+    if (!r2.ok) return toast(r2.error, 'err');
+    toast('تم حذف الإعلان'); loadAnnouncements();
+  }));
+}
+
+// ---------- المفقودات والموجودات (إدارة) ----------
+let adminLostTimer = null;
+['adminLfStatus', 'adminLfType'].forEach(id => document.getElementById(id).addEventListener('change', loadAdminLostFound));
+$('#adminLfSearch').addEventListener('input', () => { clearTimeout(adminLostTimer); adminLostTimer = setTimeout(loadAdminLostFound, 300); });
+async function loadAdminLostFound() {
+  const box = $('#adminLostList');
+  box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:.8rem">جارِ التحميل...</p>';
+  const params = new URLSearchParams();
+  if ($('#adminLfStatus').value) params.set('status', $('#adminLfStatus').value);
+  if ($('#adminLfType').value) params.set('type', $('#adminLfType').value);
+  if ($('#adminLfSearch').value.trim()) params.set('q', $('#adminLfSearch').value.trim());
+  const r = await api('/api/lost-found' + (params.toString() ? '?' + params : ''));
+  if (!r.ok) { box.innerHTML = `<p style="color:var(--danger)">${escapeHtml(r.error)}</p>`; return; }
+  $('#adminLostCount').textContent = `${r.data.length} إعلان`;
+  if (!r.data.length) { box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:1.2rem">لا توجد إعلانات بهذه الفلاتر.</p>'; return; }
+  const LF_STATUS = { open: 'مفتوح', found: 'تم العثور عليه', returned: 'تم التسليم' };
+  box.innerHTML = r.data.map(item => `
+    <div class="complaint-item" style="align-items:flex-start;gap:.8rem">
+      <div style="flex:1;min-width:0">
+        <span class="lost-type ${item.type}">${item.type === 'lost' ? '🔴 مفقود' : '🟢 موجود'}</span>
+        <b style="display:block;margin:.25rem 0 .15rem">${escapeHtml(item.title)}</b>
+        <span style="font-size:.73rem;color:var(--muted)">${escapeHtml(item.description || '')}</span><br>
+        <span style="font-size:.7rem;color:var(--muted)">📍 ${escapeHtml(item.location || '—')} · 📅 ${escapeHtml(item.item_date || '')} · بواسطة ${escapeHtml(item.owner_name)}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.35rem;align-items:flex-end">
+        <select class="admin-lf-status" data-id="${item.id}" style="border:1.5px solid var(--line);border-radius:8px;padding:.3rem .5rem;font-size:.74rem">
+          <option value="open" ${item.status === 'open' ? 'selected' : ''}>مفتوح</option>
+          <option value="found" ${item.status === 'found' ? 'selected' : ''}>تم العثور عليه</option>
+          <option value="returned" ${item.status === 'returned' ? 'selected' : ''}>تم التسليم</option>
+        </select>
+        <button class="btn btn-outline btn-sm" data-admin-lf-contact="${item.id}">💬 تواصل</button>
+        <button class="btn btn-danger btn-sm" data-admin-lf-delete="${item.id}">حذف</button>
+      </div>
+    </div>`).join('');
+  box.querySelectorAll('.admin-lf-status').forEach(sel => sel.addEventListener('change', async () => {
+    const r = await api(`/api/lost-found/${sel.dataset.id}/status`, { method: 'PATCH', body: { status: sel.value } });
+    if (!r.ok) return toast(r.error, 'err');
+    toast('تم تحديث الحالة'); loadAdminLostFound();
+  }));
+  box.querySelectorAll('[data-admin-lf-contact]').forEach(btn => btn.addEventListener('click', async () => {
+    const msg = prompt('اكتب رسالتك لصاحب الإعلان:');
+    if (!msg) return;
+    const r = await api(`/api/lost-found/${btn.dataset.adminLfContact}/contact`, { method: 'POST', body: { message: msg } });
+    if (!r.ok) return toast(r.error, 'err');
+    toast('تم إرسال رسالتك — سيصله إشعار ✓');
+  }));
+  box.querySelectorAll('[data-admin-lf-delete]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('حذف الإعلان؟')) return;
+    const r = await api(`/api/lost-found/${btn.dataset.adminLfDelete}`, { method: 'DELETE' });
+    if (!r.ok) return toast(r.error, 'err');
+    toast('تم حذف الإعلان'); loadAdminLostFound();
+  }));
+}
+
+// ---------- أولوية الشكوى يدويًا من مودال الإدارة ----------
+$('#viewPriority').addEventListener('change', async () => {
+  if (!viewComplaintId) return;
+  const r = await api(`/api/complaints/${viewComplaintId}/priority`, { method: 'POST', body: { priority: $('#viewPriority').value } });
+  if (!r.ok) return toast(r.error, 'err');
+  toast('تم تعديل الأولوية ✓');
+  openViewComplaint(viewComplaintId);
+});
+
+// ---------- تفعيل الأقسام الجديدة عند ظهورها ----------
+window.addEventListener('nexus:section-shown', e => {
+  const s = e.detail.section;
+  if (s === 'satisfaction') loadSatisfaction();
+  if (s === 'announcements') loadAnnouncements();
+  if (s === 'lostfound') loadAdminLostFound();
+});

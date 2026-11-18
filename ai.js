@@ -30,6 +30,7 @@ const CATEGORIES = [
 ];
 const URGENT_WORDS = ['عاجل', 'طارئ', 'فوري', 'بكره', 'اليوم', 'امتحان', 'الحرمان', 'الدعم', 'ساعه', 'فورًا'];
 const HIGH_WORDS = ['بسرعه', 'قريب', 'قبل الامتحان', 'الاسبوع ده', 'لسه ما ظهرتش', 'محروق'];
+const CRITICAL_WORDS = ['حرمان', 'امتحان بكرة', 'الامتحان بكرة', 'قبل الامتحان', 'النهاردة امتحان', 'بكرة امتحان', 'مش هقدر امتحن'];
 
 function classifyComplaint(text) {
   const norm = normalizeArabic(text);
@@ -50,8 +51,9 @@ function classifyComplaint(text) {
     : 0.3;
 
   const urgent = URGENT_WORDS.some(w => norm.includes(normalizeArabic(w)));
-  const high = !urgent && HIGH_WORDS.some(w => norm.includes(normalizeArabic(w)));
-  const priority = urgent ? 'urgent' : high ? 'high' : best && best.score >= 3 ? 'medium' : 'low';
+  const critical = CRITICAL_WORDS.some(w => norm.includes(normalizeArabic(w)));
+  const high = !urgent && !critical && HIGH_WORDS.some(w => norm.includes(normalizeArabic(w)));
+  const priority = critical ? 'critical' : urgent ? 'urgent' : high ? 'high' : best && best.score >= 3 ? 'medium' : 'low';
   const matchedSomething = !!(best && best.score > 0);
 
   // القسم المستهدف حسب التصنيف (fallback: شؤون الطلاب)
@@ -150,7 +152,9 @@ function buildInsights() {
                  FROM complaints c JOIN departments d ON d.id = c.department_id
                  LEFT JOIN complaint_types ct ON ct.id = c.type_id`);
   const total = all.length;
-  const open = all.filter(c => c.status === 'new' || c.status === 'in_progress').length;
+  const newCount = all.filter(c => c.status === 'new').length;
+  const inProgress = all.filter(c => c.status === 'in_progress').length;
+  const open = newCount + inProgress;
   const resolved = all.filter(c => c.status === 'resolved').length;
   const rejected = all.filter(c => c.status === 'rejected').length;
 
@@ -188,7 +192,7 @@ function buildInsights() {
   // أولويات مفتوحة تحتاج تدخل
   const urgentOpen = all.filter(c => (c.status === 'new' || c.status === 'in_progress') && (c.priority === 'urgent' || c.priority === 'high')).length;
 
-  return { total, open, resolved, rejected, avgResolutionHours, satisfaction, perDepartment, topTypes, staffPerf, series, prediction, currentWeek, urgentOpen };
+  return { total, newCount, inProgress, open, resolved, rejected, avgResolutionHours, satisfaction, perDepartment, topTypes, staffPerf, series, prediction, currentWeek, urgentOpen };
 }
 
 // ---------- 4) تلخيص ذكي للتقارير (مبني على بيانات حقيقية) ----------
@@ -219,4 +223,138 @@ function generateSummary() {
   return { summary: lines.join('\n'), insights: i, generatedAt: today };
 }
 
-module.exports = { classifyComplaint, answerQuestion, searchKnowledge, buildInsights, generateSummary, normalizeArabic, tokens };
+// ---------- 5) اسأل الإدارة: أسئلة بالعربي الطبيعي ← أرقام حقيقية من القاعدة ----------
+const ADMIN_SUGGESTIONS = [
+  'ما أكثر مشكلة تواجه الطلاب هذا الشهر؟',
+  'ما القسم الذي يستقبل أكبر عدد من الشكاوى؟',
+  'ما متوسط وقت حل الشكاوى؟',
+  'ما نسبة الشكاوى التي تم حلها؟',
+];
+
+function adminAsk(question) {
+  const nq = normalizeArabic(question);
+  const has = (...words) => words.some(w => nq.includes(normalizeArabic(w)));
+  const ins = buildInsights();
+  const stats = v => v; // identity helper for readability
+
+  // --- توقع الأسبوع القادم ---
+  if (has('توقع', 'القادم', 'الاسبوع الجاي')) {
+    return {
+      answer: `بناءً على انحدار خطي على آخر ${ins.series.length} أسابيع من البيانات الفعلية، أتوقع ${ins.prediction} شكوى في الأسبوع القادم. هذا الأسبوع وصل ${ins.currentWeek} شكوى.`,
+      stats: [{ label: 'توقع الأسبوع القادم', value: String(ins.prediction) }, { label: 'شكاوى هذا الأسبوع', value: String(ins.currentWeek) }, { label: 'الاتجاه', value: ins.series.length >= 2 ? (ins.series.at(-1).count >= ins.series.at(-2).count ? 'تصاعدي ↑' : 'تنازلي ↓') : '—' }],
+      chart: { type: 'line', title: 'الحجم الأسبوعي للشكاوى', labels: ins.series.map(s => s.week), values: ins.series.map(s => s.count) },
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- أكثر/أكثر مشكلة تكرارًا ---
+  if (has('اكثر مشكل', 'أكثر مشكل', 'مشاكل متكرر', 'مشكلات متكرر')) {
+    const top = ins.topTypes.slice(0, 3);
+    if (!top.length) return { answer: 'لا توجد شكاوى كافية لتحديد أكثر المشكلات تكرارًا بعد.', stats: [], chart: null, suggestions: ADMIN_SUGGESTIONS };
+    return {
+      answer: `أكثر المشكلات تكرارًا في النظام:\n${top.map((t, i) => `${i + 1}. ${t.name} — ${t.count} شكوى`).join('\n')}`,
+      stats: top.map(t => ({ label: t.name, value: `${t.count}` })),
+      chart: { type: 'bar', title: 'أكثر الأنواع تكرارًا', labels: top.map(t => t.name), values: top.map(t => t.count) },
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- القسم الأعلى استقبالًا ---
+  if (has('اكثر قسم', 'أكثر قسم', 'اكبر عدد', 'أكبر عدد', 'يستقبل', 'استقبال')) {
+    if (!ins.perDepartment.length) return { answer: 'لا توجد شكاوى مسجلة بعد.', stats: [], chart: null, suggestions: ADMIN_SUGGESTIONS };
+    const top = ins.perDepartment[0];
+    return {
+      answer: `القسم الأعلى استقبالًا للشكاوى هو «${top.name}» بإجمالي ${top.total} شكوى (${top.open} مفتوحة حاليًا و${top.resolved} تم حلها).`,
+      stats: [{ label: 'إجمالي الشكاوى', value: String(top.total) }, { label: 'مفتوحة', value: String(top.open) }, { label: 'تم حلها', value: String(top.resolved) }],
+      chart: { type: 'bar', title: 'الشكاوى حسب القسم', labels: ins.perDepartment.map(d => d.name), values: ins.perDepartment.map(d => d.total) },
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- متوسط وقت/زمن الحل ---
+  if (has('متوسط') && has('وقت', 'زمن')) {
+    const cmp = ins.avgResolutionHours <= 48 ? 'ضمن مستهدف الـ SLA (48 ساعة)' : 'أعلى من مستهدف الـ SLA (48 ساعة) — يحتاج تدخل';
+    return {
+      answer: `متوسط زمن حل الشكاوى في المعهد ${ins.avgResolutionHours} ساعة، وهذا ${cmp}.`,
+      stats: [{ label: 'متوسط زمن الحل', value: `${ins.avgResolutionHours} ساعة` }, { label: 'مستهدف الـ SLA', value: '48 ساعة' }, { label: 'شكاوى مفتوحة', value: String(ins.open) }],
+      chart: { type: 'bar', title: 'زمن الحل لكل قسم (ساعة — تقريبي حسب المتوسط الكلي)', labels: ['المعهد كله'], values: [ins.avgResolutionHours] },
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- نسبة الشكاوى التي تم حلها ---
+  if (has('نسبة') && has('حل')) {
+    const pct = ins.total ? Math.round((ins.resolved / ins.total) * 100) : 0;
+    return {
+      answer: `تم حل ${ins.resolved} من أصل ${ins.total} شكوى — أي بنسبة ${pct}% (المرفوضة: ${ins.rejected}).`,
+      stats: [{ label: 'تم حلها', value: `${ins.resolved}` }, { label: 'مفتوحة', value: `${ins.open}` }, { label: 'نسبة الحل', value: `${pct}%` }],
+      chart: { type: 'bar', title: 'توزيع حالات الشكاوى', labels: ['جديدة', 'قيد المراجعة', 'تم الحل', 'مرفوضة'], values: [ins.newCount, ins.inProgress, ins.resolved, ins.rejected] },
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- رضا الطلاب / التقييمات ---
+  if (has('رضا', 'تقييم', 'اراء')) {
+    const byDept = q(`SELECT d.name AS name, AVG(c.rating) AS avg_rating, COUNT(c.rating) AS count
+                      FROM complaints c JOIN departments d ON d.id = c.department_id
+                      WHERE c.rating IS NOT NULL GROUP BY d.id ORDER BY avg_rating DESC`);
+    const best = byDept[0], worst = byDept[byDept.length - 1];
+    const totalRatings = byDept.reduce((s, d) => s + d.count, 0);
+    return {
+      answer: `متوسط رضا الطلاب عن الخدمة ${ins.satisfaction !== null ? ins.satisfaction + '%' : 'غير متاح'} من ${totalRatings} تقييم.${best ? `\nأعلى قسم: «${best.name}» (${Math.round(best.avg_rating * 20)}%)` : ''}${worst && worst !== best ? `\nأقل قسم: «${worst.name}» (${Math.round(worst.avg_rating * 20)}%) — يحتاج تحسين` : ''}`,
+      stats: byDept.map(d => ({ label: d.name, value: `${Math.round(d.avg_rating * 20)}%` })).slice(0, 4),
+      chart: byDept.length ? { type: 'bar', title: 'نسبة الرضا حسب القسم', labels: byDept.map(d => d.name), values: byDept.map(d => Math.round(d.avg_rating * 20)) } : null,
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- أكثر الشكاوى تأخيرًا / المتأخرة عن الـ SLA ---
+  if (has('متاخر', 'متأخر', 'تأخير', 'اتأخرت')) {
+    const rows = q(`SELECT c.ticket_no, c.title, d.name AS dept, CAST((julianday('now') - julianday(c.created_at)) AS INTEGER) AS days_late, d.sla_hours
+                    FROM complaints c JOIN departments d ON d.id = c.department_id
+                    WHERE c.status IN ('new','in_progress') ORDER BY c.created_at ASC LIMIT 5`);
+    if (!rows.length) return { answer: 'مفيش شكاوى مفتوحة متأخرة دلوقتي — كل شيء تحت السيطرة ✓', stats: [], chart: null, suggestions: ADMIN_SUGGESTIONS };
+    return {
+      answer: `أقدم ${rows.length} شكاوى مفتوحة تحتاج انتباه:\n${rows.map(r => `- ${r.ticket_no} (${r.dept}، منذ ${r.days_late} يوم): ${r.title.slice(0, 60)}`).join('\n')}`,
+      stats: rows.map(r => ({ label: r.ticket_no, value: `${r.days_late} يوم` })),
+      chart: null,
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- مقارنة مع الشهر السابق ---
+  if (has('مقارنة', 'الشهر الماضي', 'الشهر السابق')) {
+    const thisMonth = one(`SELECT COUNT(*) c FROM complaints WHERE created_at >= datetime('now','-30 days')`).c;
+    const prevMonth = one(`SELECT COUNT(*) c FROM complaints WHERE created_at >= datetime('now','-60 days') AND created_at < datetime('now','-30 days')`).c;
+    const diff = thisMonth - prevMonth;
+    const trend = diff > 0 ? `زادت بمقدار ${diff} شكوى عن الشهر السابق` : diff < 0 ? `انخفضت بمقدار ${Math.abs(diff)} شكوى عن الشهر السابق` : 'ثابتة مقارنة بالشهر السابق';
+    return {
+      answer: `خلال آخر 30 يوم: ${thisMonth} شكوى، مقابل ${prevMonth} في الـ 30 يوم التي قبلها — ${trend}.`,
+      stats: [{ label: 'آخر 30 يوم', value: String(thisMonth) }, { label: 'الـ 30 يوم السابقة', value: String(prevMonth) }, { label: 'الفرق', value: (diff >= 0 ? '+' : '') + diff }],
+      chart: { type: 'bar', title: 'مقارنة شهرية', labels: ['الشهر الماضي', 'آخر 30 يوم'], values: [prevMonth, thisMonth] },
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- العاجلة/الحرجة ---
+  if (has('عاجل', 'حرج', 'critical', 'عاجله', 'حرجة')) {
+    const criticalOpen = one(`SELECT COUNT(*) c FROM complaints WHERE priority = 'critical' AND status IN ('new','in_progress')`).c;
+    return {
+      answer: `حاليًا يوجد ${ins.urgentOpen} شكوى عاجلة/عالية الأولوية مفتوحة، منها ${criticalOpen} بمستوى «حرج». يُنصح بمراجعة «الشكاوى العاجلة» في لوحة الموظفين.`,
+      stats: [{ label: 'عاجلة/مرتفعة مفتوحة', value: String(ins.urgentOpen) }, { label: 'حرجة مفتوحة', value: String(criticalOpen) }],
+      chart: null,
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- الافتراضي: نظرة عامة تنفيذية ---
+  const pct = ins.total ? Math.round((ins.resolved / ins.total) * 100) : 0;
+  return {
+    answer: `نظرة عامة على المعهد:\nإجمالي الشكاوى ${ins.total} (${ins.open} مفتوحة، ${ins.resolved} تم حلها = ${pct}%، ${ins.rejected} مرفوضة).\nمتوسط زمن الحل ${ins.avgResolutionHours} ساعة${ins.satisfaction !== null ? `، رضا الطلاب ${ins.satisfaction}%` : ''}.\nالأكثر تكرارًا: ${ins.topTypes[0]?.name || '—'}.\nاكتب سؤالًا محددًا مثل: «ما أكثر قسم استقبالًا؟» أو «كم متوسط وقت الحل؟»`,
+    stats: [{ label: 'إجمالي الشكاوى', value: String(ins.total) }, { label: 'مفتوحة', value: String(ins.open) }, { label: 'نسبة الحل', value: `${pct}%` }, { label: 'متوسط زمن الحل', value: `${ins.avgResolutionHours} ساعة` }],
+    chart: null,
+    suggestions: ADMIN_SUGGESTIONS,
+  };
+}
+
+module.exports = { classifyComplaint, answerQuestion, searchKnowledge, buildInsights, generateSummary, adminAsk, normalizeArabic, tokens };
