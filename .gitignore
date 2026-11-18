@@ -1,0 +1,8 @@
+# قاعدة البيانات والملفات المتغيرة — لا تُرفع على GitHub
+nexus.db
+nexus.db-wal
+nexus.db-shm
+uploads/*
+!uploads/.gitkeep
+
+# لا شيء آخر — النشر على Pages من مجلد docs/

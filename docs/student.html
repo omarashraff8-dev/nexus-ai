@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="rtl">
+<head>
+<script>window.NEXUS_STATIC = true;</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة الطالب | NEXUS AI</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,2 95,27 95,73 50,98 5,73 5,27' fill='%230A1B33'/><path d='M32 68 V32 L68 68 V32' stroke='%2338BDF8' stroke-width='7' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/nexus.css">
+<style>
+.star-btn { background: none; border: none; font-size: 1.6rem; color: #D5DEEC; transition: transform .15s, color .15s; }
+.star-btn.filled { color: #F59E0B; }
+.star-btn:hover { transform: scale(1.25); }
+.ai-analysis .conf { display:flex; align-items:center; gap:.5rem; margin-top:.4rem }
+.ai-analysis .conf .progress { flex:1 }
+.sidebar { background: linear-gradient(180deg, #0A1B33 0%, #0F2744 100%); }
+.new-grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 1.2rem; align-items: start; }
+@media (max-width: 1000px) { .new-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="dash">
+
+  <!-- ════════ SIDEBAR ════════ -->
+  <aside class="sidebar" id="sidebar">
+    <a class="logo" href="index.html" style="text-decoration:none">
+      <svg class="logo-mark" viewBox="0 0 100 100"><polygon points="50,2 95,27 95,73 50,98 5,73 5,27" fill="none" stroke="#38BDF8" stroke-width="6"/><path d="M33 67 V33 L67 67 V33" stroke="#38BDF8" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="logo-text">NEXUS<b>AI</b></span>
+    </a>
+    <nav class="side-nav" aria-label="التنقل الرئيسي">
+      <button class="side-link active" data-section="dashboard" data-title="الرئيسية"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z"/></svg>الرئيسية</button>
+      <button class="side-link" data-section="new" data-title="شكوى جديدة"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>شكوى جديدة</button>
+      <button class="side-link" data-section="mine" data-title="شكوايّ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5h6"/></svg>شكوايّ ومتابعة الحالة</button>
+      <button class="side-link" data-section="ai" data-title="المساعد الذكي"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V6a2 2 0 0 1 2-2h2"/><path d="M9 3a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2z"/><rect x="3" y="12" width="18" height="8" rx="2"/><path d="M8 16h.01M16 16h.01"/></svg>المساعد الذكي <span class="chip" style="font-size:.55rem;padding:.05rem .4rem;margin:0;background:rgba(56,189,248,.18)">RAG</span></button>
+      <button class="side-link" data-section="notifs" data-title="الإشعارات"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>الإشعارات<span class="side-badge" id="sideNotifBadge" style="display:none">0</span></button>
+    </nav>
+    <div class="side-user">
+      <div class="avatar" id="userAvatar">ع</div>
+      <div style="min-width:0"><div class="name" id="userName">...</div><div class="role" id="userRole">طالب</div></div>
+      <button class="logout-btn" id="logoutBtn" title="تسجيل الخروج" aria-label="تسجيل الخروج"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button>
+    </div>
+  </aside>
+
+  <!-- ════════ MAIN ════════ -->
+  <div class="main">
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:.7rem">
+        <button class="icon-btn sidebar-toggle" aria-label="القائمة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div><h1 id="topbarTitle">الرئيسية</h1><div class="sub">NEXUS AI — بوابتك الجامعية الذكية</div></div>
+      </div>
+      <div style="position:relative">
+        <button class="icon-btn" id="bellBtn" aria-label="الإشعارات"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="badge-dot" id="bellBadge" style="display:none">0</span></button>
+        <div id="notifDropdown" style="display:none;position:absolute;top:calc(100% + 10px);inset-inline-end:0;width:330px;max-width:90vw;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:60;padding:.5rem"></div>
+      </div>
+    </header>
+
+    <main class="content">
+
+      <!-- ═══════ 1) لوحة التحكم ═══════ -->
+      <section class="page-section active" id="section-dashboard">
+        <div class="stats-grid" id="studentStats">
+          <div class="stat-card"><div class="icon" style="background:var(--info-bg)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5h6"/></svg></div><div><b id="stTotal">0</b><span>إجمالي طلباتي</span></div></div>
+          <div class="stat-card"><div class="icon" style="background:var(--warn-bg)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><b id="stProgress">0</b><span>قيد المراجعة</span></div></div>
+          <div class="stat-card"><div class="icon" style="background:var(--ok-bg)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div><div><b id="stResolved">0</b><span>تم حلها</span></div></div>
+          <div class="stat-card"><div class="icon" style="background:var(--danger-bg)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg></div><div><b id="stRejected">0</b><span>مرفوضة</span></div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-9-9"/></svg>آخر طلباتي</h2><button class="link" data-goto="mine">عرض الكل ←</button></div>
+          <div id="recentList" style="display:grid;gap:.5rem"></div>
+        </div>
+
+        <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;background:var(--navy-800);border-color:transparent">
+          <div>
+            <h3 style="color:#fff;font-size:.95rem;margin-bottom:.2rem">💡 عندك سؤال عن اللوائح؟ اسأل المساعد الذكي</h3>
+            <p style="color:#9FB6D8;font-size:.8rem">«إيه شروط التحويل؟» · «إزاي أقدم تظلم على الدرجات؟» — والإجابة مع المصدر ورقم الصفحة.</p>
+          </div>
+          <button class="btn btn-cyan btn-sm" data-goto="ai">اسأل المساعد دلوقتي</button>
+        </div>
+      </section>
+
+      <!-- ═══════ 2) شكوى جديدة ═══════ -->
+      <section class="page-section" id="section-new">
+        <div class="new-grid">
+          <div class="card">
+            <div class="card-title"><h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>تقديم شكوى أو طلب جديد</h2></div>
+            <form id="complaintForm" novalidate>
+              <div class="field">
+                <label for="fType">نوع الشكوى</label>
+                <select id="fType" required><option value="">— اختر نوع الشكوى —</option></select>
+              </div>
+              <div class="field">
+                <label for="fTitle">العنوان باختصار</label>
+                <input id="fTitle" type="text" required minlength="5" placeholder="مثال: مش قادر أسجل مادة الرسم الهندسي">
+              </div>
+              <div class="field">
+                <label for="fDetails">تفاصيل المشكلة</label>
+                <textarea id="fDetails" rows="4" required minlength="10" placeholder="اكتب كل التفاصيل: إمتى بدأت المشكلة؟ جربت إيه؟ أي أرقام أو مواعيد مهمة؟ — بالعربي أو العامية زي ما إنت عايز"></textarea>
+              </div>
+              <div class="field">
+                <label>الأولوية <span style="color:var(--muted);font-weight:400">(يقترحها الذكاء الاصطناعي وتقدر تعدلها)</span></label>
+                <select id="fPriority">
+                  <option value="low">منخفضة</option>
+                  <option value="medium" selected>متوسطة</option>
+                  <option value="high">مرتفعة</option>
+                  <option value="urgent">عاجلة</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>إرفاق صورة أو مستند <span style="color:var(--muted);font-weight:400">(اختياري — JPG/PNG/PDF بحد أقصى 8MB)</span></label>
+                <input type="file" id="fAttachment" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx" hidden>
+                <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+                  <button type="button" class="btn btn-outline btn-sm" id="pickFileBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.05l-9.19 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.65 5.66l-9.2 9.2a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>اختر ملف</button>
+                  <span id="fileName" style="font-size:.8rem;color:var(--muted)">لم يتم اختيار ملف</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.4rem">
+                <button type="button" class="btn btn-outline" id="aiAnalyzeBtn">✨ حلّل بالذكاء الاصطناعي</button>
+                <button type="submit" class="btn btn-primary" id="submitComplaintBtn" style="flex:1;justify-content:center">إرسال الشكوى الآن</button>
+              </div>
+            </form>
+          </div>
+
+          <div style="display:grid;gap:1rem">
+            <div class="card" id="aiSuggestionCard">
+              <div class="card-title"><h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8 5.8 1.9-5.8 1.9L12 18.4l-1.9-5.8-5.8-1.9 5.8-1.9z"/></svg>اقتراح الذكاء الاصطناعي</h3></div>
+              <div id="aiSuggestionBody" style="font-size:.85rem;color:var(--muted)">اكتب تفاصيل المشكلة ثم اضغط «حلّل بالذكاء الاصطناعي» — هيحددلك النوع والقسم والأولوية والثقة.</div>
+            </div>
+            <div class="card">
+              <h3 style="font-size:.9rem;margin-bottom:.4rem;color:var(--navy-800)">📌 عشان توصل إجابتك أسرع</h3>
+              <ul style="font-size:.8rem;color:var(--muted);padding-inline-start:1.1rem;display:grid;gap:.25rem">
+                <li>اذكر التواريخ والأرقام والمواعيد المهمة.</li>
+                <li>لو في مرفق (إيصال، كود خطأ)، ارفعه — بيوفر أيام من المراسلات.</li>
+                <li>شكوى واحدة لمشكلة واحدة — أوضح وأدق.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ 3) شكوايّ ═══════ -->
+      <section class="page-section" id="section-mine">
+        <div class="card">
+          <div class="card-title"><h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5h6"/></svg>شكوايّ</h2>
+            <div class="seg" id="mineFilterSeg">
+              <button class="active" data-status="">الكل</button><button data-status="new">جديدة</button><button data-status="in_progress">قيد المراجعة</button><button data-status="resolved">تم الحل</button><button data-status="rejected">مرفوضة</button>
+            </div>
+          </div>
+          <div id="mineList" style="display:grid;gap:.5rem"></div>
+        </div>
+      </section>
+
+      <!-- ═══════ 4) المساعد الذكي ═══════ -->
+      <section class="page-section" id="section-ai">
+        <div class="card" style="max-width:880px;margin-inline:auto">
+          <div class="card-title"><h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="18" height="8" rx="2"/><path d="M12 8V6a2 2 0 0 1 2-2h2"/></svg>المساعد الجامعي الذكي</h2><span class="badge new">متصل بلوائح المعهد ✓</span></div>
+          <p style="font-size:.8rem;color:var(--muted);margin-bottom:.6rem">يجاوبك من مستندات المعهد الرسمية فقط، وكل إجابة معاها مصدر وصفة. للحالات الخاصة بحالتك، قدّمها كشكوى من «شكوى جديدة».</p>
+          <div class="ai-chat" id="aiChatBox" aria-live="polite"></div>
+          <div class="quick-questions" id="quickQuestions">
+            <button class="qq">ما شروط التحويل من معهد آخر؟</button>
+            <button class="qq">الأوراق المطلوبة للتقديم وكيف أستخرج شهادة قيد؟</button>
+            <button class="qq">إزاي أقدم تظلم على الدرجات وإيه الرسوم؟</button>
+            <button class="qq">ما نسبة الغياب المسموح بها في الامتحانات؟</button>
+            <button class="qq">أنسى كلمة مرور المنصة أعمل إيه؟</button>
+          </div>
+          <form class="chat-input" id="aiChatForm" style="margin-top:.6rem">
+            <input id="aiChatInput" autocomplete="off" placeholder="اكتب سؤالك هنا..." aria-label="سؤالك">
+            <button type="submit" class="send-btn" aria-label="إرسال"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ═══════ 5) الإشعارات ═══════ -->
+      <section class="page-section" id="section-notifs">
+        <div class="card" style="max-width:760px">
+          <div class="card-title"><h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/></svg>الإشعارات</h2><button class="btn btn-outline btn-sm" id="markAllBtn">تعليم الكل كمقروء</button></div>
+          <div id="notifList"></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ══════════ مودال تفاصيل الشكوى ══════════ -->
+<div class="modal-overlay" id="complaintModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modalTitle">تفاصيل الشكوى</h3>
+      <button class="icon-btn" id="closeModalBtn" aria-label="إغلاق"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div id="modalHeadInfo" style="margin-bottom:.7rem"></div>
+      <div class="modal-grid">
+        <div style="display:grid;gap:.8rem">
+          <div class="ai-analysis" id="modalAiBox" style="display:none"></div>
+          <div><h4 style="font-size:.82rem;color:var(--navy-800);margin-bottom:.3rem">التفاصيل</h4><p id="modalDetails" style="font-size:.88rem;white-space:pre-line;background:#F8FBFF;border:1px solid var(--line);border-radius:var(--radius-sm);padding:.6rem .8rem"></p><div id="modalAttachment" style="margin-top:.4rem;font-size:.8rem"></div></div>
+          <div><h4 style="font-size:.82rem;color:var(--navy-800);margin-bottom:.3rem">سجل التحديثات</h4><ul class="timeline" id="modalTimeline"></ul></div>
+          <div id="ratingBox" style="display:none"><h4 style="font-size:.82rem;color:var(--navy-800);margin-bottom:.3rem">قيّم تجربتك مع حل الشكوى</h4><div id="ratingStars"></div><p id="ratingThanks" style="display:none;font-size:.8rem;color:var(--ok);font-weight:800;margin-top:.3rem">شكرًا لتقييمك! 🌟</p></div>
+        </div>
+        <div style="display:flex;flex-direction:column">
+          <h4 style="font-size:.82rem;color:var(--navy-800);margin-bottom:.3rem">المحادثة مع الموظف المختص</h4>
+          <div class="chat-box" id="modalChat" style="flex:1"></div>
+          <form class="chat-input" id="modalMessageForm">
+            <input id="modalMessageInput" autocomplete="off" placeholder="اكتب رسالة للموظف..." aria-label="رسالتك">
+            <button type="submit" class="send-btn" aria-label="إرسال"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/local-backend.js"></script>
+<script src="js/common.js"></script>
+<script src="js/student.js"></script>
+</body>
+</html>
