@@ -130,18 +130,20 @@ function initShell(opts = {}) {
     const closeSidebar = () => { sidebar.classList.remove('open'); backdrop.classList.remove('show'); };
 
     const toggle = $('.sidebar-toggle');
-    let lastTouch = 0;
-    const toggleFn = e => {
-      // منع الازدواج: على الأجهزة اللمسية بيحصل touchend وبعده click لنفس اللمسة
-      if (e.type === 'click' && Date.now() - lastTouch < 600) return;
-      if (e.type === 'touchend') lastTouch = Date.now();
-      e.stopPropagation();
-      sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
-    };
-    // click + touch = استجابة فورية على كل الأجهزة (بعض أجهزة Android تضيع الـ click بعد تغيير القسم)
+    let suppressClickUntil = 0;
+    const doToggle = () => sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    // اللمس على الموبايل بيولّد touchend وبعده click لنفس اللمسة — نمنع التنفيذ مرتين
     if (toggle) {
-      toggle.addEventListener('click', toggleFn);
-      toggle.addEventListener('touchend', toggleFn, { passive: true });
+      toggle.addEventListener('touchend', e => {
+        e.preventDefault();
+        suppressClickUntil = Date.now() + 1000;
+        doToggle();
+      }, { passive: false });
+      toggle.addEventListener('click', e => {
+        if (Date.now() < suppressClickUntil) { e.preventDefault(); return; }
+        e.stopPropagation();
+        doToggle();
+      });
     }
     // أي لمس/كبسة داخل القائمة على رابط/زرار قفلها فورًا
     const insideFn = e => {
