@@ -113,8 +113,42 @@ function initShell(opts = {}) {
   const logoutBtn = $('#logoutBtn');
   if (logoutBtn) logoutBtn.addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); window.location.href = 'login.html'; });
 
-  const toggle = $('.sidebar-toggle');
-  if (toggle) toggle.addEventListener('click', () => $('.sidebar').classList.toggle('open'));
+  const closeMobileSidebar = () => { const sb = $('.sidebar'); if (sb) sb.classList.remove('open'); const bd = document.querySelector('.sidebar-backdrop'); if (bd) bd.classList.remove('show'); };
+
+  // ===== القائمة الجانبية: تفتح/تقفل بضغطات ذكية =====
+  const sidebar = $('.sidebar');
+  if (sidebar) {
+    // طبقة التعتيم تُنشأ مرة واحدة لو مش موجودة
+    let backdrop = document.querySelector('.sidebar-backdrop');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.className = 'sidebar-backdrop';
+      backdrop.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(backdrop);
+    }
+    const openSidebar = () => { sidebar.classList.add('open'); backdrop.classList.add('show'); };
+    const closeSidebar = () => { sidebar.classList.remove('open'); backdrop.classList.remove('show'); };
+
+    const toggle = $('.sidebar-toggle');
+    if (toggle) toggle.addEventListener('click', e => {
+      e.stopPropagation();
+      sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    // أي كبسة داخل القائمة على رابط/زرار قفلها فورًا
+    sidebar.addEventListener('click', e => {
+      if (e.target.closest('.side-link') || e.target.closest('a') || e.target.closest('button')) closeSidebar();
+    });
+    // أي كبسة بره القائمة تقفلها
+    document.addEventListener('click', e => {
+      if (!sidebar.classList.contains('open')) return;
+      if (e.target.closest('.sidebar') || e.target.closest('.sidebar-toggle')) return;
+      closeSidebar();
+    });
+    // الكبسة على طبقة التعتيم تقفلها
+    backdrop.addEventListener('click', closeSidebar);
+    // Escape يقفلها
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+  }
 
   // تبديل أقسام الصفحة (SPA-lite)
   $$('[data-section]').forEach(link => {
@@ -123,7 +157,7 @@ function initShell(opts = {}) {
       const target = link.dataset.section;
       $$('.page-section').forEach(sec => sec.classList.toggle('active', sec.id === 'section-' + target));
       $$('.side-link').forEach(a => a.classList.toggle('active', a === link));
-      $('.sidebar').classList.remove('open');
+      closeMobileSidebar();
       const title = $('#topbarTitle'); if (title && link.dataset.title) title.textContent = link.dataset.title;
       window.dispatchEvent(new CustomEvent('nexus:section-shown', { detail: { section: target } }));
     });
