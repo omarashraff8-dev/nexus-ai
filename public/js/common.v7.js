@@ -130,7 +130,11 @@ function initShell(opts = {}) {
     const closeSidebar = () => { sidebar.classList.remove('open'); backdrop.classList.remove('show'); };
 
     const toggle = $('.sidebar-toggle');
+    let lastTouch = 0;
     const toggleFn = e => {
+      // منع الازدواج: على الأجهزة اللمسية بيحصل touchend وبعده click لنفس اللمسة
+      if (e.type === 'click' && Date.now() - lastTouch < 600) return;
+      if (e.type === 'touchend') lastTouch = Date.now();
       e.stopPropagation();
       sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
     };
