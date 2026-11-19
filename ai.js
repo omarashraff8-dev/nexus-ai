@@ -108,11 +108,16 @@ function extractAnswer(doc, query) {
   return `${body}.`;
 }
 
+function hasArabic(text) { return /[؀-ۿ]/.test(String(text || '')); }
+
 function answerQuestion(query) {
   const results = searchKnowledge(query, 3);
   if (!results.length || results[0].score < 1.2) {
+    const english = !hasArabic(query);
     return {
-      answer: 'معلش، مش لاقي إجابة مباشرة عن السؤال ده في لوائح المعهد المتاحة عندي. تقدر تعيد صياغة السؤال، أو لو الموضوع خاص بحالتك ممكن تقدمه كشكوى من "شكوى جديدة" والقسم المختص هيرد عليك رسميًا.',
+      answer: english
+        ? 'Sorry, I could not find a direct answer in the available regulations. Please rephrase your question, or submit an official request via "New Complaint" and the responsible department will reply formally.'
+        : 'معلش، مش لاقي إجابة مباشرة عن السؤال ده في لوائح المعهد المتاحة عندي. تقدر تعيد صياغة السؤال، أو لو الموضوع خاص بحالتك ممكن تقدمه كشكوى من "شكوى جديدة" والقسم المختص هيرد عليك رسميًا.',
       sources: [], grounded: false,
     };
   }
@@ -240,7 +245,7 @@ function adminAsk(question) {
   // --- توقع الأسبوع القادم ---
   if (has('توقع', 'القادم', 'الاسبوع الجاي')) {
     return {
-      answer: `بناءً على انحدار خطي على آخر ${ins.series.length} أسابيع من البيانات الفعلية، أتوقع ${ins.prediction} شكوى في الأسبوع القادم. هذا الأسبوع وصل ${ins.currentWeek} شكوى.`,
+      answer: `🔮 توقع (ليس رقمًا فعليًا): بناءً على انحدار خطي على آخر ${ins.series.length} أسابيع من البيانات الفعلية، أتوقع ${ins.prediction} شكوى في الأسبوع القادم. هذا الأسبوع وصل ${ins.currentWeek} شكوى فعلية.`,
       stats: [{ label: 'توقع الأسبوع القادم', value: String(ins.prediction) }, { label: 'شكاوى هذا الأسبوع', value: String(ins.currentWeek) }, { label: 'الاتجاه', value: ins.series.length >= 2 ? (ins.series.at(-1).count >= ins.series.at(-2).count ? 'تصاعدي ↑' : 'تنازلي ↓') : '—' }],
       chart: { type: 'line', title: 'الحجم الأسبوعي للشكاوى', labels: ins.series.map(s => s.week), values: ins.series.map(s => s.count) },
       suggestions: ADMIN_SUGGESTIONS,
@@ -289,6 +294,42 @@ function adminAsk(question) {
       answer: `تم حل ${ins.resolved} من أصل ${ins.total} شكوى — أي بنسبة ${pct}% (المرفوضة: ${ins.rejected}).`,
       stats: [{ label: 'تم حلها', value: `${ins.resolved}` }, { label: 'مفتوحة', value: `${ins.open}` }, { label: 'نسبة الحل', value: `${pct}%` }],
       chart: { type: 'bar', title: 'توزيع حالات الشكاوى', labels: ['جديدة', 'قيد المراجعة', 'تم الحل', 'مرفوضة'], values: [ins.newCount, ins.inProgress, ins.resolved, ins.rejected] },
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- الأقسام الأعلى تأخيرًا في زمن الحل ---
+  if (has('قسم', 'اقسام', 'قسمه') && has('تأخر', 'تأخير', 'اعلى تاخير', 'الأعلى تأخير', 'اعلى تأخير')) {
+    const byDept = q(`SELECT d.name AS name, AVG((julianday(c.resolved_at) - julianday(c.created_at)) * 24) AS avg_hours, COUNT(*) AS resolved_count
+                      FROM complaints c JOIN departments d ON d.id = c.department_id
+                      WHERE c.status = 'resolved' AND c.resolved_at IS NOT NULL GROUP BY d.id ORDER BY avg_hours DESC`);
+    const breached = one(`SELECT COUNT(*) AS c FROM complaints c JOIN departments d ON d.id = c.department_id
+                        WHERE c.status IN ('new','in_progress') AND (julianday('now') - julianday(c.created_at)) * 24 > d.sla_hours`).c;
+    if (!byDept.length) return { answer: 'لا توجد شكاوى محلولة كافية لحساب متوسط الزمن لكل قسم.', stats: [], chart: null, suggestions: ADMIN_SUGGESTIONS };
+    const worst = byDept[0], best = byDept[byDept.length - 1];
+    return {
+      answer: `زمن الحل حسب القسم (فعلي، من الشكاوى المحلولة):\n- الأبطأ: «${worst.name}» بمتوسط ${Math.round(worst.avg_hours)} ساعة (${worst.resolved_count} شكوى محلولة)\n- الأسرع: «${best.name}» بمتوسط ${Math.round(best.avg_hours)} ساعة\n- شكاوى مفتوحة متأخرة عن الـ SLA حاليًا: ${breached}`,
+      stats: byDept.map(d => ({ label: d.name, value: `${Math.round(d.avg_hours)} ساعة` })),
+      chart: { type: 'bar', title: 'متوسط زمن الحل لكل قسم (ساعة)', labels: byDept.map(d => d.name), values: byDept.map(d => Math.round(d.avg_hours)) },
+      suggestions: ADMIN_SUGGESTIONS,
+    };
+  }
+
+  // --- المشكلات المتكررة ---
+  if (has('متكرر', 'تكرار', 'متكررة', 'تتكرر')) {
+    const repeated = ins.topTypes.filter(t => t.count >= 4);
+    if (!repeated.length) {
+      return {
+        answer: `لا توجد مشكلة متكررة بشكل لافت (تحتاج 4+ شكاوى لنفس النوع). الأكثر ورودًا حاليًا: ${ins.topTypes[0]?.name || '—'} (${ins.topTypes[0]?.count || 0} شكوى).`,
+        stats: ins.topTypes.slice(0, 3).map(t => ({ label: t.name, value: `${t.count}` })),
+        chart: null,
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    return {
+      answer: `المشكلات المتكررة (4+ شكاوى لنفس النوع):\n${repeated.map((t, i) => `${i + 1}. ${t.name} — ${t.count} شكوى`).join('\n')}\n\nالتوصية: نشر إرشادات للطلاب عن هذه المشكلات يقلل الحجم من المنبع.`,
+      stats: repeated.map(t => ({ label: t.name, value: `${t.count}` })),
+      chart: { type: 'bar', title: 'المشكلات المتكررة', labels: repeated.map(t => t.name), values: repeated.map(t => t.count) },
       suggestions: ADMIN_SUGGESTIONS,
     };
   }

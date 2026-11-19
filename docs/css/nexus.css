@@ -149,11 +149,11 @@ input, select, textarea { font-family: var(--font); }
 .ai-card { position: relative; overflow: hidden; }
 .ai-card .tag { font-size: .65rem; font-weight: 800; color: var(--cyan); letter-spacing: 1px; }
 
-.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; counter-reset: step; }
-.step { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.1); border-radius: var(--radius); padding: 1.4rem; position: relative; }
-.step::before { counter-increment: step; content: counter(step); position: absolute; top: -14px; inset-inline-start: 1rem; width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--cyan), var(--blue)); color: var(--navy-900); font-weight: 900; display: grid; place-items: center; }
-.step h3 { color: #fff; font-size: .98rem; margin: .4rem 0 .3rem; }
-.step p { font-size: .8rem; color: #9FB6D8; }
+.how-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; counter-reset: step; }
+.how-step { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.1); border-radius: var(--radius); padding: 1.4rem; position: relative; }
+.how-step::before { counter-increment: step; content: counter(step); position: absolute; top: -14px; inset-inline-start: 1rem; width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--cyan), var(--blue)); color: var(--navy-900); font-weight: 900; display: grid; place-items: center; }
+.how-step h3 { color: #fff; font-size: .98rem; margin: .4rem 0 .3rem; }
+.how-step p { font-size: .8rem; color: #9FB6D8; }
 
 .dept-chips { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
 .dept-chip { display: inline-flex; align-items: center; gap: .45rem; background: var(--card); border: 1px solid var(--line); color: var(--navy-800); border-radius: 999px; padding: .4rem 1rem; font-size: .82rem; font-weight: 700; box-shadow: var(--shadow); }
@@ -335,6 +335,40 @@ table.data tr:hover td { background: var(--info-bg); }
   .admin-charts, .admin-bottom, .admin-two-col { grid-template-columns: 1fr !important; }
 }
 
+/* تايم لاين المراحل — 7 خطوات */
+.stepper { display: flex; gap: 0; overflow-x: auto; padding: .35rem .1rem .7rem; margin-bottom: .5rem; }
+.stepper .step { display: grid; justify-items: center; min-width: 92px; position: relative; }
+.step::after { content: ''; position: absolute; top: 13px; inset-inline-start: 50%; width: 100%; height: 2.5px; background: var(--line); z-index: 0; }
+.step:last-child::after { display: none; }
+.step-dot { width: 27px; height: 27px; border-radius: 999px; background: #E4EAF6; border: 2px solid var(--line); display: grid; place-items: center; font-size: .72rem; color: #8AA3C4; z-index: 1; }
+.step-label { font-size: .62rem; color: var(--muted); text-align: center; margin-top: .3rem; line-height: 1.4; max-width: 92px; }
+.step-time { font-size: .57rem; color: #A9BEDD; white-space: nowrap; }
+.step.done .step-dot { background: var(--ok); border-color: var(--ok); color: #fff; }
+.step.done .step-label { color: var(--navy-800); font-weight: 800; }
+.step.current .step-dot { background: var(--blue); border-color: var(--cyan); color: #fff; animation: pulse 1.6s infinite; }
+.step.current .step-label { color: var(--blue); font-weight: 900; }
+.step.rejected .step-dot { background: var(--danger); border-color: var(--danger); color: #fff; }
+.step.rejected .step-label { color: var(--danger); font-weight: 800; }
+.step.skipped .step-dot { background: #fff; border-style: dashed; }
+.step.skipped .step-label { color: #B9C9DE; font-style: italic; }
+.step.skipped .step-time { visibility: hidden; }
+
+/* ترتيب الأقسام */
+.rank-table td:first-child { font-weight: 900; color: var(--blue); }
+.rank-1 { background: #FEF9C3 !important; }
+.rank-pill { display: inline-block; min-width: 34px; text-align: center; background: var(--info-bg); color: var(--blue); border-radius: 6px; padding: .1rem .45rem; font-weight: 900; font-size: .78rem; }
+
+/* بانرات تأكيد الحل (الطالب + الموظف) */
+.confirm-banner { background: linear-gradient(135deg,#1A1040,#0A1B33); border:1px solid rgba(167,139,250,.4); border-radius:var(--radius-sm); padding:.8rem 1rem; margin-bottom:.6rem; display:none; gap:.6rem; flex-direction:column; align-items:stretch; color:#E7EEF9; }
+.confirm-banner b { color:#C4B5FD; font-size:.88rem; }
+.confirm-banner p { font-size:.74rem; color:#A9BEDD; }
+.confirm-banner textarea, .confirm-banner input { background: rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.18); color:#fff; border-radius:10px; padding:.5rem .7rem; font-size:.82rem; resize:vertical; }
+.confirm-banner textarea::placeholder, .confirm-banner input::placeholder { color:#7E97BC; }
+.employee-banner { background: linear-gradient(135deg,#3A2303,#1A1040); border:1px solid rgba(245,158,11,.45); border-radius:var(--radius-sm); padding:.8rem 1rem; margin-bottom:.6rem; display:none; gap:.5rem; color:#FEF3E2; }
+.employee-banner b { color:#FBBF24; font-size:.88rem; }
+.employee-banner p { font-size:.74rem; color:#E7C585; }
+.employee-banner input { background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.2); color:#fff; border-radius:10px; padding:.45rem .65rem; font-size:.8rem; width:100%; }
+
 /* ============================================================
    الميزات المتقدمة — مكونات جديدة بنفس الهوية
    ============================================================ */
@@ -469,7 +503,7 @@ table.data tr:hover td { background: var(--info-bg); }
    ============================================================ */
 @media (max-width: 1080px) {
   .grid-4, .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .grid-3, .steps { grid-template-columns: repeat(2, 1fr); }
+  .grid-3, .how-steps { grid-template-columns: repeat(2, 1fr); }
   .modal-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
@@ -489,7 +523,7 @@ table.data tr:hover td { background: var(--info-bg); }
 }
 .sidebar-toggle { display: none; }
 @media (max-width: 560px) {
-  .grid-3, .grid-4, .steps, .stats-grid { grid-template-columns: 1fr; }
+  .grid-3, .grid-4, .how-steps, .stats-grid { grid-template-columns: 1fr; }
   .section { padding: 3.5rem 1rem; }
   .hero { padding-top: 5rem; }
 }

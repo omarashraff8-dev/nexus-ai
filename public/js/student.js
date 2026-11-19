@@ -56,7 +56,7 @@ async function loadRecent() {
   box.innerHTML = r.data.recent.map(c => `
     <button class="complaint-item" style="width:100%;text-align:start" data-open="${c.id}">
       <span><span class="ticket-no">${escapeHtml(c.ticket_no)}</span><br><b>${escapeHtml(c.title)}</b></span>
-      <span style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">${priorityBadge(c.priority)} ${statusBadge(c.status)}</span>
+      <span style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">${priorityBadge(c.priority)} ${statusBadge(c.status)} ${closureTag(c)}</span>
     </button>`).join('');
   box.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openComplaint(Number(b.dataset.open))));
 }
@@ -151,7 +151,7 @@ async function loadMine() {
   box.innerHTML = r.data.map(c => `
     <button class="complaint-item" style="width:100%;text-align:start" data-open="${c.id}">
       <span style="min-width:0"><span class="ticket-no">${escapeHtml(c.ticket_no)} · ${fmtDay(c.created_at)}</span><br><b>${escapeHtml(c.title)}</b><br><span style="font-size:.72rem;color:var(--muted)">${escapeHtml(c.department_name)}${c.assigned_name ? ' · ' + escapeHtml(c.assigned_name) : ''}</span></span>
-      <span style="display:flex;flex-direction:column;gap:.3rem;align-items:flex-end">${statusBadge(c.status)} ${priorityBadge(c.priority)}</span>
+      <span style="display:flex;flex-direction:column;gap:.3rem;align-items:flex-end">${statusBadge(c.status)} ${priorityBadge(c.priority)} ${closureTag(c)}</span>
     </button>`).join('');
   box.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openComplaint(Number(b.dataset.open))));
 }
@@ -174,7 +174,9 @@ async function openComplaint(id) {
 
 function renderModal({ complaint: c, messages, updates }) {
   $('#modalTitle').textContent = `${c.ticket_no} — ${c.title}`;
-  $('#modalHeadInfo').innerHTML = `<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">${statusBadge(c.status)} ${priorityBadge(c.priority)}<span style="font-size:.75rem;color:var(--muted)">القسم: <b>${escapeHtml(c.department_name)}</b>${c.assigned_name ? ' · الموظف: <b>' + escapeHtml(c.assigned_name) + '</b>' : ''} · أُنشئت ${fmtDate(c.created_at)}</span></div>`;
+  $('#modalHeadInfo').innerHTML = `<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">${statusBadge(c.status)} ${priorityBadge(c.priority)}${closureTag(c)}<span style="font-size:.75rem;color:var(--muted)">القسم: <b>${escapeHtml(c.department_name)}</b>${c.assigned_name ? ' · الموظف: <b>' + escapeHtml(c.assigned_name) + '</b>' : ''} · أُنشئت ${fmtDate(c.created_at)}</span></div>`;
+  renderStepper($('#modalStepper'), c, updates);
+  renderConfirmBanner(c);
   $('#modalDetails').textContent = c.details;
 
   // صندوق تحليل الذكاء الاصطناعي
@@ -228,7 +230,34 @@ function renderModal({ complaint: c, messages, updates }) {
     }
   } else ratingBox.style.display = 'none';
 }
-function actionLabel(a) { return { created: 'تم إنشاء الشكوى', status: 'تغيير الحالة', assigned: 'إسناد', transfer: 'تحويل لقسم', request_info: 'طلب معلومات', priority: 'تعديل الأولوية يدويًا' }[a] || a; }
+// ===== بانر تأكيد الحل — تُغلق الشكوى رسميًا بعد إجابة الطالب =====
+function renderConfirmBanner(c) {
+  const banner = $('#confirmBanner');
+  const yesBtn = $('#confirmYesBtn'), noBtn = $('#confirmNoBtn'), reasonBox = $('#confirmRejectReason'), rejectSubmit = $('#confirmRejectSubmit');
+  const isAwaiting = c.status === 'resolved' && c.closure_status !== 'confirmed';
+  banner.style.display = isAwaiting ? 'flex' : 'none';
+  if (!isAwaiting) { reasonBox.style.display = 'none'; rejectSubmit.style.display = 'none'; reasonBox.value = ''; return; }
+  reasonBox.style.display = 'none'; rejectSubmit.style.display = 'none'; reasonBox.value = '';
+  yesBtn.onclick = async () => {
+    const r = await api(`/api/complaints/${c.id}/confirm`, { method: 'POST', body: { decision: 'confirmed' } });
+    if (!r.ok) return toast(r.error, 'err');
+    toast('تم إغلاق شكواك رسميًا — شكرًا لثقتك 🌟');
+    const reload = await api(`/api/complaints/${c.id}`);
+    if (reload.ok) renderModal(reload.data);
+  };
+  noBtn.onclick = () => { reasonBox.style.display = 'block'; rejectSubmit.style.display = 'inline-flex'; reasonBox.focus(); };
+  rejectSubmit.onclick = async () => {
+    const reason = reasonBox.value.trim();
+    if (reason.length < 5) return toast('اكتب سبب عدم الحل (٥ أحرف+)', 'err');
+    const r = await api(`/api/complaints/${c.id}/confirm`, { method: 'POST', body: { decision: 'rejected', reason } });
+    if (!r.ok) return toast(r.error, 'err');
+    toast('تم إبلاغ الموظف المختص — شكرًا لتوضيحك');
+    const reload = await api(`/api/complaints/${c.id}`);
+    if (reload.ok) renderModal(reload.data);
+  };
+}
+
+function actionLabel(a) { return { created: 'تم إنشاء الشكوى', status: 'تغيير الحالة', assigned: 'إسناد', transfer: 'تحويل لقسم', request_info: 'طلب معلومات', priority: 'تعديل الأولوية يدويًا', closure_confirmed: 'الطالب أكّد الحل', reopened: 'الشكوى اُعيد فتحها', request_confirmation: 'الشؤون طلبت تأكيد الحل', employee_confirmed: 'الموظف أكّد الحل', employee_not_confirmed: 'الموظف: لسه مش محلولة', rating_reset: 'تم مسح التقييم بمعرفة الإدارة' }[a] || a; }
 
 $('#modalMessageForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -259,6 +288,27 @@ function addBotAnswer(answer, sources) {
   aiBox.appendChild(div);
   aiBox.scrollTop = aiBox.scrollHeight;
 }
+function suggestionsForAnswer(sources) {
+  const cat = sources && sources[0] && sources[0].category;
+  const map = {
+    'التسجيل': ['الأوراق المطلوبة للتقديم وكيف أستخرج شهادة قيد؟', 'ما نسبة الغياب المسموح بها؟', 'إزاي أقدم طلب إعفاء من المصروفات؟'],
+    'الامتحانات': ['إزاي أقدم تظلم على الدرجات وإيه الرسوم؟', 'ما نسبة الغياب المسموح بها في الامتحانات؟', 'ما هي شروط التحويل من معهد آخر؟'],
+    'المالية': ['إزاي أقدم طلب إعفاء من المصروفات؟', 'ما مواعيد سداد القسط التاني؟'],
+    'تكنولوجيا المعلومات': ['نسيت كلمة مرور المنصة أعمل إيه؟', 'إزاي أرسل شكوى للدعم الفني؟'],
+    'شؤون الطلاب': ['ما هي شروط التحويل من معهد آخر؟', 'إزاي أستخرج شهادة قيد؟'],
+    'المكتبة': ['كم كتاب أقدر أستعير ومدة إيه؟'],
+  };
+  return map[cat] || ['ما هي شروط التحويل من معهد آخر؟', 'إزاي أقدم تظلم على الدرجات وإيه الرسوم؟', 'ما نسبة الغياب المسموح بها؟'];
+}
+function addFollowUpSuggestions(sources) {
+  const box = document.createElement('div');
+  box.className = 'quick-questions';
+  box.style.marginTop = '.2rem';
+  box.innerHTML = suggestionsForAnswer(sources).map(s => `<button class="qq">${escapeHtml(s)}</button>`).join('');
+  aiBox.appendChild(box);
+  aiBox.scrollTop = aiBox.scrollHeight;
+  box.querySelectorAll('.qq').forEach(b => b.addEventListener('click', () => { box.remove(); askAssistant(b.textContent.trim()); }));
+}
 async function askAssistant(text) {
   addAiBubble(text, 'user');
   const typing = document.createElement('div');
@@ -268,6 +318,7 @@ async function askAssistant(text) {
   typing.remove();
   if (!r.ok) { addBotAnswer(r.error || 'حصل خطأ، حاول تاني.', []); return; }
   addBotAnswer(r.data.answer, r.data.sources);
+  if (r.data.grounded && r.data.sources && r.data.sources.length) addFollowUpSuggestions(r.data.sources);
 }
 async function renderAiHistory() {
   const r = await api('/api/ai/conversations');

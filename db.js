@@ -67,6 +67,9 @@ function initDb() {
     ai_confidence REAL,
     rating INTEGER,
     rating_comment TEXT,
+    closure_status TEXT,
+    internal_resolution TEXT,
+    internal_resolution_note TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     resolved_at TEXT
@@ -251,7 +254,28 @@ function initDb() {
   migrate();
   seed();
   seedExtras();
+  seedEnglishKnowledge();
+  // backfill: أي شكوى محلولة + مقيّمة تُعتبر مغلقة (تشغيل بعد الـ seeding)
+  run(`UPDATE complaints SET closure_status = 'confirmed' WHERE rating IS NOT NULL AND closure_status IS NULL`);
   return db;
+}
+
+// وثائق إنجليزية في قاعدة المعرفة — تُضاف مرة واحدة ولا تُكرر
+function seedEnglishKnowledge() {
+  const exists = one(`SELECT COUNT(*) AS c FROM knowledge_documents WHERE source LIKE 'English%'`).c;
+  if (exists > 0) return;
+  const docs = [
+    ['Transfer between institutes — regulations', 'English Regulations of the High Institute of Engineering — 2025', 46, 'Registration',
+      'Students may transfer from another institute to the High Institute of Engineering after completing at least one full academic year with success at the highest grade level. Equivalency of previously studied courses is decided by the Equivalency Committee. Applications are accepted within the first two weeks of the semester, accompanied by an original academic transcript and an approval letter from the original institute. Transfer is not permitted while an academic warning or a disciplinary dismissal is in effect.'],
+    ['Examination rules and resit applications', 'English Examination Rules of the High Institute of Engineering — 2025', 79, 'Examinations',
+      'A student may request a review of marked examination scripts within 15 days of result publication upon payment of a review fee of EGP 150 per course. The review board consists of the original course instructor and another senior academic from the same department. If an error in marking is proven, the grade is corrected free of charge and the fee is refunded. Requests to have practical examination grades restored are referred directly to the Examinations Office without fees.'],
+    ['Library borrowing regulations', 'Central Library Regulations — 2025', 4, 'Library',
+      'First-year students may borrow up to two books for one week. Students in second year and above may borrow up to four books for two weeks, renewable once if no other request exists. A daily delay fine of EGP 5 applies per book. Students with unpaid fines are not permitted to borrow. Rare reference works may not leave the library and are available for internal consultation only.'],
+  ];
+  for (const [title, source, page, category, content] of docs) {
+    run('INSERT INTO knowledge_documents(title, source, page, category, content) VALUES (?,?,?,?,?)', [title, source, page, category, content]);
+  }
+  console.log('[db] English knowledge documents added ✓');
 }
 
 function migrate() {
@@ -287,9 +311,16 @@ function migrate() {
     `);
   }
   const cols = q('PRAGMA table_info(complaints)');
-  if (!cols.some(c => c.name === 'rating_comment')) {
-    run('ALTER TABLE complaints ADD COLUMN rating_comment TEXT');
-  }
+  const ensureCol = (name, ddl) => {
+    if (!cols.some(c => c.name === name)) run(`ALTER TABLE complaints ADD COLUMN ${ddl}`);
+  };
+  ensureCol('rating_comment', 'rating_comment TEXT');
+  // تأكيد الحل: بين الطالب والإدارة/الموظف
+  ensureCol('closure_status', "closure_status TEXT");           // awaiting | confirmed | NULL
+  ensureCol('internal_resolution', "internal_resolution TEXT"); // requested | confirmed | not_confirmed | NULL
+  ensureCol('internal_resolution_note', 'internal_resolution_note TEXT');
+  // backfill: الشكاوى المقيّمة تُعتبر مغلقة
+  run(`UPDATE complaints SET closure_status = 'confirmed' WHERE rating IS NOT NULL AND closure_status IS NULL`);
   // إعادة إنشاء الـ indexes بعد أي إعادة بناء للجدول
   run('CREATE INDEX IF NOT EXISTS idx_complaints_dept ON complaints(department_id, status)');
   run('CREATE INDEX IF NOT EXISTS idx_complaints_student ON complaints(student_id)');

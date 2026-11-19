@@ -14,7 +14,7 @@ const DEPT_COLORS = ['#2563EB', '#38BDF8', '#7C3AED', '#F59E0B', '#16A34A', '#DC
   document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => $(`.side-link[data-section="${b.dataset.goto}"]`)?.click()));
   window.addEventListener('nexus:section-shown', e => {
     const s = e.detail.section;
-    if (s === 'dashboard') loadInsights();
+    if (s === 'dashboard') { loadInsights(); loadDeptRanking(); }
     if (s === 'staff') loadUsers();
     if (s === 'departments') { loadDepartmentsTable(); loadTypesTable(); }
     if (s === 'complaints') loadAllComplaints();
@@ -22,7 +22,7 @@ const DEPT_COLORS = ['#2563EB', '#38BDF8', '#7C3AED', '#F59E0B', '#16A34A', '#DC
     if (s === 'notifs') loadNotifications();
   });
 
-  await Promise.all([loadInsights(), loadDepartmentSelects()]);
+  await Promise.all([loadInsights(), loadDepartmentSelects(), loadDeptRanking()]);
   buildInlineForms();
 })();
 
@@ -285,7 +285,7 @@ async function loadAllComplaints() {
       <td><span class="ticket-no">${escapeHtml(c.ticket_no)}</span></td>
       <td style="font-size:.8rem">${escapeHtml(c.student_name)}</td>
       <td style="max-width:230px;font-size:.8rem"><b>${escapeHtml(c.title.slice(0, 55))}${c.title.length > 55 ? '…' : ''}</b><br><span style="font-size:.68rem;color:var(--muted)">${escapeHtml(c.department_name)}</span></td>
-      <td>${priorityBadge(c.priority)}</td><td>${statusBadge(c.status)}</td>
+      <td>${priorityBadge(c.priority)}</td><td>${statusBadge(c.status)} ${closureTag(c)}</td>
       <td style="font-size:.78rem">${escapeHtml(c.assigned_name || 'غير مسندة')}</td>
       <td style="font-size:.74rem;white-space:nowrap">${fmtDay(c.created_at)}</td>
       <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" data-view="${c.id}">عرض</button> <button class="btn btn-primary btn-sm" data-assign="${c.id}" data-title="${escapeHtml(c.ticket_no)}">إسناد</button></td>
@@ -296,6 +296,51 @@ async function loadAllComplaints() {
 $('#aSearch').addEventListener('input', () => { clearTimeout(adminSearchTimer); adminSearchTimer = setTimeout(loadAllComplaints, 300); });
 ['aDept', 'aStatus', 'aPriority', 'aFrom', 'aTo'].forEach(id => $('#' + id).addEventListener('change', loadAllComplaints));
 $('#aClearFilters').addEventListener('click', () => { ['aSearch', 'aFrom', 'aTo'].forEach(id => $('#' + id).value = ''); ['aDept', 'aStatus', 'aPriority'].forEach(id => $('#' + id).selectedIndex = 0); loadAllComplaints(); });
+
+// ===== بانر اسأل الموظف: طلب تأكيد الحل =====
+function renderAdminConfirmBanner(c) {
+  const banner = $('#adminConfirmBanner');
+  const title = $('#adminConfirmTitle'), text = $('#adminConfirmText'), state = $('#adminConfirmState'), note = $('#adminConfirmNote');
+  const requestBtn = $('#adminRequestConfirmBtn');
+  banner.style.display = 'flex';
+  const assigneeMention = c.assigned_name ? `الموظف ${c.assigned_name}` : 'الموظف المسؤول';
+  if (c.internal_resolution === 'requested') {
+    requestBtn.disabled = true; requestBtn.textContent = '⏳ بانتظار رد الموظف';
+    state.style.display = 'inline-block'; state.style.color = '#FCD34D';
+    state.textContent = 'الشؤون طلبت التأكيد — لم يرد الموظف بعد';
+    text.textContent = `بانتظار رد ${assigneeMention}${c.department_name ? ' في قسم ' + c.department_name : ''}.`;
+    note.style.display = 'none';
+  } else if (c.internal_resolution === 'confirmed') {
+    requestBtn.disabled = false; requestBtn.textContent = '📤 طلب تأكيد مرة أخرى';
+    state.style.display = 'inline-block'; state.style.color = '#7EE0A0';
+    state.textContent = 'الموظف أكّد الحل ✓';
+    text.textContent = 'تم تسجيل تأكيد الموظف — الشكوى محلولة بشهادة المختص.';
+    note.style.display = c.internal_resolution_note ? 'block' : 'none';
+    note.textContent = c.internal_resolution_note ? `ملاحظة الموظف: ${c.internal_resolution_note}` : '';
+  } else if (c.internal_resolution === 'not_confirmed') {
+    requestBtn.disabled = false; requestBtn.textContent = '📤 اطلب تأكيد مرة أخرى';
+    state.style.display = 'inline-block'; state.style.color = '#FCA5A5';
+    state.textContent = 'الموظف بيقول: لسه ❗';
+    text.textContent = 'الموظف بيقول المشكلة لسه موجودة — راجعي معه التفاصيل أو أعد الإسناد.';
+    note.style.display = c.internal_resolution_note ? 'block' : 'none';
+    note.textContent = c.internal_resolution_note ? `ملاحظة الموظف: ${c.internal_resolution_note}` : '';
+  } else {
+    requestBtn.disabled = false; requestBtn.textContent = '📤 طلب تأكيد الحل';
+    state.style.display = 'none';
+    text.textContent = `اسأل ${assigneeMention}: هل المشكلة اتحلت فعلًا؟ (يرد من لوحته)`;
+    note.style.display = 'none';
+  }
+}
+$('#adminRequestConfirmBtn').addEventListener('click', async () => {
+  if (!viewComplaintId) return;
+  const btn = $('#adminRequestConfirmBtn'); btn.disabled = true; btn.textContent = 'جاري الطلب...';
+  const r = await api(`/api/complaints/${viewComplaintId}/request-confirmation`, { method: 'POST' });
+  if (!r.ok) { toast(r.error, 'err'); btn.disabled = false; btn.textContent = '📤 طلب تأكيد الحل'; return; }
+  toast('تم إرسال الطلب للموظف — هيوصله إشعار 🔔');
+  const reload = await api(`/api/complaints/${viewComplaintId}`);
+  if (reload.ok) { const d = reload.data; renderAdminConfirmBanner(d.complaint); }
+  loadAllComplaints();
+});
 
 // مودال العرض (قراءة فقط)
 const viewModal = $('#viewModal');
@@ -311,7 +356,10 @@ async function openViewComplaint(id) {
   const { complaint: c, messages, updates } = r.data;
   $('#viewModalTitle').textContent = `${c.ticket_no} — ${c.title}`;
   $('#viewPriority').value = c.priority || 'medium';
-  $('#viewHeadInfo').innerHTML = `<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">${statusBadge(c.status)} ${priorityBadge(c.priority)}<span style="font-size:.75rem;color:var(--muted)">الطالب: <b>${escapeHtml(c.student_name)}</b> (${escapeHtml(c.student_code || '—')}) · القسم: <b>${escapeHtml(c.department_name)}</b> · ${fmtDate(c.created_at)}</span></div>`;
+  const resetBtn = $('#viewResetRatingBtn');
+  resetBtn.style.display = c.rating ? 'inline-flex' : 'none';
+  $('#viewHeadInfo').innerHTML = `<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">${statusBadge(c.status)} ${priorityBadge(c.priority)}${closureTag(c)}<span style="font-size:.75rem;color:var(--muted)">الطالب: <b>${escapeHtml(c.student_name)}</b> (${escapeHtml(c.student_code || '—')}) · القسم: <b>${escapeHtml(c.department_name)}</b> · ${fmtDate(c.created_at)}</span></div>`;
+  renderAdminConfirmBanner(c);
   $('#viewDetails').textContent = c.details;
   const aiBox = $('#viewAiBox');
   if (c.ai_category) { aiBox.style.display = 'block'; aiBox.innerHTML = `<b>✨ تحليل NEXUS AI:</b> «${escapeHtml(c.ai_category)}» · ثقة ${Math.round((c.ai_confidence || 0) * 100)}%`; } else aiBox.style.display = 'none';
@@ -320,6 +368,14 @@ async function openViewComplaint(id) {
   $('#viewTimeline').innerHTML = updates.map(u => `<li><div class="t-body"><b>${escapeHtml(u.action)}</b>${u.details ? `<span>${escapeHtml(u.details)}</span>` : ''}</div><time>${fmtDay(u.created_at)}</time></li>`).join('');
 }
 $('#viewAssignBtn').addEventListener('click', () => { viewModal.classList.remove('open'); if (viewComplaintId) openAssignModal(viewComplaintId, 'NX-...'); });
+$('#viewResetRatingBtn').addEventListener('click', async () => {
+  if (!viewComplaintId) return;
+  if (!confirm('مسح تقييم الطالب نهائيًا؟ (تصحيح إداري — الطالب يقدر يقيّم تاني)')) return;
+  const r = await api(`/api/admin/complaints/${viewComplaintId}/reset-rating`, { method: 'POST' });
+  if (!r.ok) return toast(r.error, 'err');
+  toast('تم مسح التقييم — الطالب يقدر يقيّم تاني');
+  $('#viewResetRatingBtn').style.display = 'none';
+});
 
 // مودال الإسناد
 const assignModal = $('#assignModal');
@@ -584,3 +640,45 @@ window.addEventListener('nexus:section-shown', e => {
   if (s === 'announcements') loadAnnouncements();
   if (s === 'lostfound') loadAdminLostFound();
 });
+
+
+// ============================================================
+//  تصنيف أداء الأقسام — محسوب بالكامل من بيانات حقيقية
+// ============================================================
+async function loadDeptRanking() {
+  const tbody = $('#deptRankTableBody');
+  const [insR, satR, allR] = await Promise.all([api('/api/admin/insights'), api('/api/admin/satisfaction'), api('/api/complaints')]);
+  if (!insR.ok || !satR.ok || !allR.ok) { tbody.innerHTML = '<tr><td colspan="7" style="color:var(--danger)">تعذر حساب التصنيف</td></tr>'; return; }
+  const deptInfo = {};
+  for (const d of insR.data.perDepartment) deptInfo[d.name] = { name: d.name, total: d.total, open: d.open, resolved: d.resolved, avgHours: null, satPct: null };
+  // متوسط زمن الحل لكل قسم من بيانات الشكاوى الكاملة
+  const times = {};
+  for (const c of allR.data) {
+    if (c.status === 'resolved' && c.resolved_at) {
+      (times[c.department_name] = times[c.department_name] || []).push((new Date(String(c.resolved_at).replace(' ', 'T') + 'Z') - new Date(String(c.created_at).replace(' ', 'T') + 'Z')) / 3600000);
+    }
+  }
+  for (const [k, arr] of Object.entries(times)) if (deptInfo[k]) deptInfo[k].avgHours = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+  // رضا كل قسم من دالة الرضا (0-100)
+  for (const d of satR.data.perDepartment) if (deptInfo[d.name]) deptInfo[d.name].satPct = d.pct;
+
+  const rows = Object.values(deptInfo).map(d => {
+    const pctResolved = d.total ? Math.round(d.resolved / d.total * 100) : 0;
+    const sat = d.satPct ?? 50; // لا توجد تقييمات → قيمة محايدة لا تُظلم القسم
+    const speed = d.avgHours === null ? 60 : Math.max(0, 100 - (d.avgHours / 72) * 100);
+    const score = Math.round(pctResolved * 0.5 + sat * 0.3 + speed * 0.2);
+    return { ...d, pctResolved, sat, speed: Math.round(speed), score };
+  }).sort((a, b) => b.score - a.score);
+
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">لا توجد بيانات كافية للتصنيف</td></tr>'; return; }
+  tbody.innerHTML = rows.map((d, i) => `
+    <tr class="${i === 0 ? 'rank-1' : ''}">
+      <td><span class="rank-pill">${i === 0 ? '🏆 1' : i + 1}</span></td>
+      <td><b>${escapeHtml(d.name)}</b>${i === 0 ? ' <span class="badge new" style="font-size:.6rem">الأفضل</span>' : ''}</td>
+      <td>${d.total}</td>
+      <td>${d.pctResolved}%</td>
+      <td>${d.avgHours !== null ? d.avgHours + ' ساعة' : '—'}</td>
+      <td>${d.satPct !== null && d.satPct !== undefined ? d.satPct + '%' : '—'}</td>
+      <td><b style="color:var(--blue)">${d.score}</b>/100</td>
+    </tr>`).join('');
+}

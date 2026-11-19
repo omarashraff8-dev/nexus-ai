@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/nexus.css">
+<link rel="stylesheet" href="css/nexus.css?v=5">
 <style>
 .star-btn { background: none; border: none; font-size: 1.6rem; color: #D5DEEC; transition: transform .15s, color .15s; }
 .star-btn.filled { color: #F59E0B; }
@@ -323,6 +323,16 @@
     </div>
     <div class="modal-body">
       <div id="modalHeadInfo" style="margin-bottom:.7rem"></div>
+      <div class="confirm-banner" id="confirmBanner" role="alert">
+        <div><b>هل مشكلتك اتحلت؟</b><p>الموظف لخّص شكواك — اختار عشان نقفل الشكوى رسميًا أو ترجعها للمراجعة.</p></div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-ok btn-sm" id="confirmYesBtn">✓ اتحلت</button>
+          <button class="btn btn-danger btn-sm" id="confirmNoBtn">✗ لسه</button>
+        </div>
+        <textarea id="confirmRejectReason" rows="2" placeholder="اكتب سبب عدم الحل (إجباري عند اختيار «لسه»)" style="display:none"></textarea>
+        <button class="btn btn-danger btn-sm" id="confirmRejectSubmit" style="display:none">أرسل — المشكلة لسه موجودة</button>
+      </div>
+      <div class="stepper" id="modalStepper" aria-label="مراحل الشكوى من الإرسال حتى الإغلاق"></div>
       <div class="modal-grid">
         <div style="display:grid;gap:.8rem">
           <div class="ai-analysis" id="modalAiBox" style="display:none"></div>
@@ -346,8 +356,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.5/tesseract.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
-<script src="js/local-backend.js"></script>
-<script src="js/common.js"></script>
-<script src="js/student.js"></script>
+<script src="js/local-backend.js?v=5"></script>
+<script src="js/common.js?v=5"></script>
+<script src="js/student.js?v=5"></script>
 </body>
 </html>

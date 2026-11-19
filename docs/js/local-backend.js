@@ -7,8 +7,8 @@
 (function () {
   'use strict';
   if (!window.NEXUS_STATIC) return; // وضع السيرفر: الملف لا يفعل شيئًا
-  const LS = 'nexus_static_db_v2';
-  const SESSION = 'nexus_static_session_v2';
+  const LS = 'nexus_static_db_v3';
+  const SESSION = 'nexus_static_session_v3';
 
   // ---------- أدوات ----------
   const nowUtc = (offsetDays = 0) => {
@@ -60,6 +60,9 @@
       { id: 8, title: 'الدعم الفني للمنصة الإلكترونية', source: 'دليل الطالب للمنصة الذكية — إصدار 2026', page: 8, category: 'تكنولوجيا المعلومات', content: 'يقدم الدعم الفني المساعدة في: استعادة كلمة المرور عبر "نسيت كلمة المرور" على صفحة الدخول، تفعيل البريد الجامعي، مشاكل تسجيل الدخول للمنصة، وأخطاء رفع الواجبات أو المشاريع التي تظهر برسائل باللون الأحمر. في الحالات المستعصية يتواصل الطالب مع مركز الدعم بالإدارة المركزية من 9 صباحًا حتى 4 عصرًا أيام العمل الرسمية عبر نموذج تذكرة داخل المنصة أو على الرقم الداخلي 114.' },
       { id: 9, title: 'نظام استعارة الكتب من المكتبة', source: 'لائحة المكتبة المركزية — إصدار 2025', page: 3, category: 'المكتبة', content: 'يحق لطالب الفرقة الأولى استعارة كتابين كحد أقصى لمدة أسبوع، ويحق لطالب فرق السنة الثانية فأعلى استعارة 4 كتب لمدة أسبوعين قابلة للتجديد مرة واحدة في حالة عدم وجود طلب عليها. تقرر غرامة تأخير 5 جنيهات عن كل كتاب عن كل يوم تأخير، وتمنع الاستعارة من لا يسدد الغرامات. ولا يجوز استعارة المراجع والكتب النادرة خارج المكتبة وتتاح للاطلاع الداخلي فقط.' },
       { id: 10, title: 'درجات أعمال السنة وتقسيم المجموع', source: 'قواعد وشروط امتحانات المعهد — إصدار 2025', page: 70, category: 'الامتحانات', content: 'تتوزع درجة المادة الواحدة (100) كالتالي: 15 درجة اختبار قصير، 10 درجات واجبات وحضور، 75 درجة امتحان نهاية الفصل. درجة النجاح في كل مادة 60%. لا تحتسب أعمال السنة في حالة الحرمان من الامتحان التحريري. يعتمد عميد المعهد نتائج الامتحانات بعد مراجعة لجنة الكنترول، ويحق لكل طالب الاطلاع على إجابته بمظروف بعد إعلان النتيجة بأسبوع حتى نهاية التظلم.' },
+      { id: 11, title: 'Transfer between institutes — regulations', source: 'English Regulations of the High Institute of Engineering — 2025', page: 46, category: 'التسجيل', content: 'Students may transfer from another institute to the High Institute of Engineering after completing at least one full academic year with success at the highest grade level. Equivalency of previously studied courses is decided by the Equivalency Committee. Applications are accepted within the first two weeks of the semester, accompanied by an original academic transcript and an approval letter from the original institute. Transfer is not permitted while an academic warning or a disciplinary dismissal is in effect.' },
+      { id: 12, title: 'Examination rules and resit applications', source: 'English Examination Rules of the High Institute of Engineering — 2025', page: 79, category: 'الامتحانات', content: 'A student may request a review of marked examination scripts within 15 days of result publication upon payment of a review fee of EGP 150 per course. The review board consists of the original course instructor and another senior academic from the same department. If an error in marking is proven, the grade is corrected free of charge and the fee is refunded. Requests to have practical examination grades restored are referred directly to the Examinations Office without fees.' },
+      { id: 13, title: 'Library borrowing regulations', source: 'Central Library Regulations — 2025', page: 4, category: 'المكتبة', content: 'First-year students may borrow up to two books for one week. Students in second year and above may borrow up to four books for two weeks, renewable once if no other request exists. A daily delay fine of EGP 5 applies per book. Students with unpaid fines are not permitted to borrow. Rare reference works may not leave the library and are available for internal consultation only.' },
     ];
     // [title, details, typeName, deptId, studentId, assignedId, daysAgo, status, priority, rating?]
     const samples = [
@@ -175,6 +178,8 @@
       { id: 2, student_id: 6, type: 'found', title: 'كارنيه طالب (سارة محمود)', description: 'تم العثور على كارنيه طالب باسم سارة محمود رقم جامعي 20230215 في ممرات مبنى ب بجوار قاعة 4.', category: 'أوراق وبطاقات', location: 'مبنى ب — الدور الأول', item_date: '2026-11-15', image: null, status: 'open', created_at: nowUtc(-3) },
       { id: 3, student_id: 7, type: 'lost', title: 'مفتاح سيارة تويوتا', description: 'مفتاح سيارة تويوتا كامري على حلقة جلدية بني، ضاع في جراج المعهد أو أمام البوابة الشمالية.', category: 'مفاتيح', location: 'الجراج / البوابة الشمالية', item_date: '2026-11-10', image: null, status: 'open', created_at: nowUtc(-8) },
     ];
+    // الشكاوى المحلولة + المقيّمة تعتبر مغلقة تلقائيًا
+    for (const c of complaints) { if (c.rating && !c.closure_status) c.closure_status = 'confirmed'; }
     return { meta: { nextComplaint: cid + 1, nextRow: 1000 }, departments, complaint_types, users, complaints, complaint_updates, messages, notifications, ai_conversations: [], knowledge_documents, reports: [], timetable, exams, grades, fees, attendance_stats, attendance_sessions: [], attendance_records: [], announcements, lost_found, lost_found_contacts: [], document_analyses: [] };
   }
 
@@ -294,10 +299,14 @@
     for (const s of sentences) { const st = tokens(s); let sc = 0; for (const t of st) if (qTokens.has(t)) sc++; if (sc > bestScore) { bestScore = sc; best = s; } }
     return (best || sentences[0] || doc.content.slice(0, 300)) + '.';
   }
+  function hasArabic(text) { return /[؀-ۿ]/.test(String(text || '')); }
   function answerQuestion(query) {
     const results = searchKnowledge(query, 3);
     if (!results.length || results[0].score < 1.2) {
-      return { answer: 'معلش، مش لاقي إجابة مباشرة عن السؤال ده في لوائح المعهد المتاحة عندي. تقدر تعيد صياغة السؤال، أو لو الموضوع خاص بحالتك ممكن تقدمه كشكوى من "شكوى جديدة" والقسم المختص هيرد عليك رسميًا.', sources: [], grounded: false };
+      const english = !hasArabic(query);
+      return { answer: english
+        ? 'Sorry, I could not find a direct answer in the available regulations. Please rephrase your question, or submit an official request via "New Complaint" and the responsible department will reply formally.'
+        : 'معلش، مش لاقي إجابة مباشرة عن السؤال ده في لوائح المعهد المتاحة عندي. تقدر تعيد صياغة السؤال، أو لو الموضوع خاص بحالتك ممكن تقدمه كشكوى من "شكوى جديدة" والقسم المختص هيرد عليك رسميًا.', sources: [], grounded: false };
     }
     const top = results[0].doc;
     return { answer: extractAnswer(top, query), sources: results.map(r => ({ title: r.doc.title, source: r.doc.source, page: r.doc.page, category: r.doc.category, score: Math.round(r.score * 10) / 10 })), grounded: true };
@@ -448,7 +457,7 @@
 
     if (has('توقع', 'القادم', 'الاسبوع الجاي')) {
       return {
-        answer: `بناءً على انحدار خطي على آخر ${series.length} أسابيع من البيانات الفعلية، أتوقع ${ins.prediction} شكوى في الأسبوع القادم. هذا الأسبوع وصل ${ins.currentWeek} شكوى.`,
+        answer: `🔮 توقع (ليس رقمًا فعليًا): بناءً على انحدار خطي على آخر ${series.length} أسابيع من البيانات الفعلية، أتوقع ${ins.prediction} شكوى في الأسبوع القادم. هذا الأسبوع وصل ${ins.currentWeek} شكوى فعلية.`,
         stats: [{ label: 'توقع الأسبوع القادم', value: String(ins.prediction) }, { label: 'شكاوى هذا الأسبوع', value: String(ins.currentWeek) }],
         chart: { type: 'line', title: 'الحجم الأسبوعي للشكاوى', labels: series.map(s => s.week), values: series.map(s => s.count) },
         suggestions: ADMIN_SUGGESTIONS,
@@ -489,6 +498,42 @@
         answer: `تم حل ${ins.resolved} من أصل ${ins.total} شكوى — أي بنسبة ${pct}% (المرفوضة: ${ins.rejected}).`,
         stats: [{ label: 'تم حلها', value: String(ins.resolved) }, { label: 'مفتوحة', value: String(ins.open) }, { label: 'نسبة الحل', value: `${pct}%` }],
         chart: { type: 'bar', title: 'توزيع حالات الشكاوى', labels: ['جديدة', 'قيد المراجعة', 'تم الحل', 'مرفوضة'], values: [ins.newCount, ins.inProgress, ins.resolved, ins.rejected] },
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('قسم', 'اقسام', 'قسمه') && has('تأخر', 'تأخير', 'اعلى تاخير', 'الأعلى تأخير', 'اعلى تأخير')) {
+      const deptHours = {};
+      for (const c of DB.complaints.filter(c => c.status === 'resolved' && c.resolved_at)) {
+        const name = (DB.departments.find(d => d.id === c.department_id) || {}).name || 'غير محدد';
+        const hrs = (parseUtc(c.resolved_at) - parseUtc(c.created_at)) / 3600000;
+        const r = deptHours[name] = deptHours[name] || { name, sum: 0, count: 0 };
+        r.sum += hrs; r.count++;
+      }
+      const byDept = Object.values(deptHours).map(d => ({ name: d.name, avg_hours: d.sum / d.count, resolved_count: d.count })).sort((a, b) => b.avg_hours - a.avg_hours);
+      const breached = DB.complaints.filter(c => (c.status === 'new' || c.status === 'in_progress') && (Date.now() - parseUtc(c.created_at)) / 3600000 > ((DB.departments.find(d => d.id === c.department_id) || {}).sla_hours || 48)).length;
+      if (!byDept.length) return { answer: 'لا توجد شكاوى محلولة كافية لحساب متوسط الزمن لكل قسم.', stats: [], chart: null, suggestions: ADMIN_SUGGESTIONS };
+      const worst = byDept[0], best = byDept[byDept.length - 1];
+      return {
+        answer: `زمن الحل حسب القسم (فعلي، من الشكاوى المحلولة):\n- الأبطأ: «${worst.name}» بمتوسط ${Math.round(worst.avg_hours)} ساعة (${worst.resolved_count} شكاوى محلولة)\n- الأسرع: «${best.name}» بمتوسط ${Math.round(best.avg_hours)} ساعة\n- شكاوى مفتوحة متأخرة عن الـ SLA حاليًا: ${breached}`,
+        stats: byDept.map(d => ({ label: d.name, value: `${Math.round(d.avg_hours)} ساعة` })),
+        chart: { type: 'bar', title: 'متوسط زمن الحل لكل قسم (ساعة)', labels: byDept.map(d => d.name), values: byDept.map(d => Math.round(d.avg_hours)) },
+        suggestions: ADMIN_SUGGESTIONS,
+      };
+    }
+    if (has('متكرر', 'تكرار', 'متكررة', 'تتكرر')) {
+      const repeated = ins.topTypes.filter(t => t.count >= 4);
+      if (!repeated.length) {
+        return {
+          answer: `لا توجد مشكلة متكررة بشكل لافت (تحتاج 4+ شكاوى لنفس النوع). الأكثر ورودًا حاليًا: ${ins.topTypes[0]?.name || '—'} (${ins.topTypes[0]?.count || 0} شكوى).`,
+          stats: ins.topTypes.slice(0, 3).map(t => ({ label: t.name, value: `${t.count}` })),
+          chart: null,
+          suggestions: ADMIN_SUGGESTIONS,
+        };
+      }
+      return {
+        answer: `المشكلات المتكررة (4+ شكاوى لنفس النوع):\n${repeated.map((t, i) => `${i + 1}. ${t.name} — ${t.count} شكوى`).join('\n')}\n\nالتوصية: نشر إرشادات للطلاب عن هذه المشكلات يقلل الحجم من المنبع.`,
+        stats: repeated.map(t => ({ label: t.name, value: `${t.count}` })),
+        chart: { type: 'bar', title: 'المشكلات المتكررة', labels: repeated.map(t => t.name), values: repeated.map(t => t.count) },
         suggestions: ADMIN_SUGGESTIONS,
       };
     }
@@ -659,8 +704,9 @@
       if (!['new', 'in_progress', 'resolved', 'rejected'].includes(body.status)) return fail(400, 'حالة غير صالحة');
       c.status = body.status; c.updated_at = nowUtc();
       c.resolved_at = body.status === 'resolved' ? nowUtc() : null;
-      logUpdate(c.id, u.id, 'status', `تم تغيير الحالة إلى: ${STATUS_LABEL[c.status]}`);
-      notify(c.student_id, c.status === 'resolved' ? 'تم حل شكواك 🎉' : 'تحديث على شكواك', `${c.ticket_no} — الحالة أصبحت: ${STATUS_LABEL[c.status]}`, 'complaint', c.id);
+      c.closure_status = body.status === 'resolved' ? 'awaiting' : null;
+      logUpdate(c.id, u.id, 'status', `تم تغيير الحالة إلى: ${STATUS_LABEL[c.status]}${c.status === 'resolved' ? ' — بانتظار تأكيد الطالب' : ''}`);
+      notify(c.student_id, c.status === 'resolved' ? 'الموظف لخّص مشكلتك — هل اتحلت؟ 🎉' : 'تحديث على شكواك', `${c.ticket_no} — ${c.status === 'resolved' ? 'بانتظار تأكيدك وتقييمك من داخل شكواك' : 'الحالة أصبحت: ' + STATUS_LABEL[c.status]}`, 'complaint', c.id);
       saveDb(DB);
       return ok({ complaint: loadComplaint(c.id) });
     }
@@ -745,6 +791,7 @@
       const c = DB.complaints.find(x => x.id === Number(mRate[1]) && x.student_id === u.id);
       if (!c) return fail(404, 'الشكوى غير موجودة');
       if (c.status !== 'resolved') return fail(400, 'لا يمكن التقييم قبل الحل');
+      if (c.rating) return fail(400, 'تم تقييم هذه الشكوى من قبل — أي تصحيح يتم عبر الإدارة');
       c.rating = r;
       c.rating_comment = String(body.comment || '').trim().slice(0, 1000) || null;
       c.updated_at = nowUtc(); saveDb(DB);
@@ -1051,6 +1098,86 @@
       saveDb(DB);
       return ok({ complaint: loadComplaint(c.id) });
     }
+
+    // ===== مسح تقييم (تصحيح إداري) =====
+    const mResetRating = path.match(/^\/api\/admin\/complaints\/(\d+)\/reset-rating$/);
+    if (mResetRating && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'admin') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const c = DB.complaints.find(x => x.id === Number(mResetRating[1]));
+      if (!c) return fail(404, 'الشكوى غير موجودة');
+      if (!c.rating) return fail(400, 'لا يوجد تقييم على هذه الشكوى أصلًا');
+      logUpdate(c.id, u.id, 'rating_reset', `تم مسح تقييم الطالب (كان ${c.rating}/5) بمعرفة الإدارة`);
+      c.rating = null; c.rating_comment = null; c.updated_at = nowUtc(); saveDb(DB);
+      return ok({ complaint: loadComplaint(c.id) });
+    }
+
+    // ===== تأكيد الطالب على الحل (closure handshake) =====
+    const mConfirm = path.match(/^\/api\/complaints\/(\d+)\/confirm$/);
+    if (mConfirm && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role !== 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const c = DB.complaints.find(x => x.id === Number(mConfirm[1]) && x.student_id === u.id);
+      if (!c) return fail(404, 'الشكوى غير موجودة');
+      if (!['confirmed', 'rejected'].includes(body.decision)) return fail(400, 'القرار غير صالح');
+      if (c.status !== 'resolved') return fail(400, 'لا يمكن تأكيد الحل قبل أن يعلّم الموظف المشكلة كمحلولة');
+      if (c.closure_status === 'confirmed') return fail(409, 'تم تأكيد الحل بالفعل');
+      if (body.decision === 'confirmed') {
+        c.closure_status = 'confirmed'; c.internal_resolution = 'confirmed'; c.updated_at = nowUtc();
+        logUpdate(c.id, u.id, 'closure_confirmed', 'الطالب أكّد أن مشكلته اتحلت');
+        const ids = new Set([c.assigned_to, ...DB.users.filter(x => x.role === 'admin' && x.active).map(x => x.id)].filter(Boolean));
+        for (const t of ids) notify(t, 'الطالب أكّد إغلاق الشكوى ✓', `${c.ticket_no} — الطالب أكّد أن مشكلته اتحلت`, 'complaint', c.id);
+      } else {
+        const note = String(body.reason || '').trim();
+        if (note.length < 5) return fail(400, 'اكتب سبب عدم الحل (5 أحرف+)');
+        c.status = 'in_progress'; c.closure_status = null; c.resolved_at = null; c.updated_at = nowUtc();
+        logUpdate(c.id, u.id, 'reopened', `الطالب أكّد أن المشكلة اتحلت لا — السبب: ${note.slice(0, 300)}`);
+        const ids = new Set([c.assigned_to, ...DB.users.filter(x => x.role === 'admin' && x.active).map(x => x.id)].filter(Boolean));
+        for (const t of ids) notify(t, 'الطالب بيقول المشكلة لسه موجودة ❗', `${c.ticket_no} — السبب: ${note.slice(0, 100)}`, 'complaint', c.id);
+      }
+      saveDb(DB);
+      return ok({ complaint: loadComplaint(c.id) });
+    }
+
+    // ===== الشؤون تطلب تأكيد الحل من الموظف =====
+    const mReqConf = path.match(/^\/api\/complaints\/(\d+)\/request-confirmation$/);
+    if (mReqConf && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role === 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      const c = DB.complaints.find(x => x.id === Number(mReqConf[1]));
+      if (!c) return fail(404, 'الشكوى غير موجودة');
+      if (!canSeeComplaint(u, c)) return fail(403, 'ليست ضمن نطاقك');
+      if (c.internal_resolution === 'requested') return fail(409, 'تم طلب تأكيد الحل بالفعل ولم يرد الموظف بعد');
+      c.internal_resolution = 'requested'; c.internal_resolution_note = null; c.updated_at = nowUtc();
+      logUpdate(c.id, u.id, 'request_confirmation', 'الشؤون طلبت تأكيد الحل من الموظف المختص');
+      DB.messages.push({ id: nextId(DB.messages), complaint_id: c.id, sender_id: u.id, body: '🔔 الشؤون طلبت تأكيد: هل المشكلة اتحلت فعلًا؟ (رد من داخل الشكوى)', is_internal: 1, created_at: nowUtc() });
+      const targets = c.assigned_to ? [c.assigned_to] : DB.users.filter(x => x.role === 'staff' && x.department_id === c.department_id && x.active).map(x => x.id);
+      for (const t of targets) notify(t, '🔔 الشؤون طلبت تأكيد الحل منك', `${c.ticket_no} — هل المشكلة اتحلت فعلًا؟`, 'complaint', c.id);
+      saveDb(DB);
+      return ok({ complaint: loadComplaint(c.id) });
+    }
+
+    // ===== رد الموظف على طلب الشؤون =====
+    const mEmpConf = path.match(/^\/api\/complaints\/(\d+)\/employee-confirm$/);
+    if (mEmpConf && method === 'POST') {
+      const u = sessionUser(); if (!u) return fail(401, 'سجل الدخول أولًا');
+      if (u.role === 'student') return fail(403, 'ليس لديك صلاحية لهذا الإجراء');
+      if (!['confirmed', 'not_confirmed'].includes(body.decision)) return fail(400, 'القرار غير صالح');
+      const c = DB.complaints.find(x => x.id === Number(mEmpConf[1]));
+      if (!c) return fail(404, 'الشكوى غير موجودة');
+      if (!canSeeComplaint(u, c)) return fail(403, 'ليست ضمن نطاقك');
+      const cleanNote = String(body.note || '').trim().slice(0, 500);
+      const confirmed = body.decision === 'confirmed';
+      c.internal_resolution = confirmed ? 'confirmed' : 'not_confirmed';
+      c.internal_resolution_note = cleanNote || null;
+      c.updated_at = nowUtc();
+      logUpdate(c.id, u.id, confirmed ? 'employee_confirmed' : 'employee_not_confirmed', cleanNote || (confirmed ? 'الموظف أكّد الحل' : 'الموظف بيقول المشكلة لسه موجودة'));
+      if (confirmed) notify(c.student_id, 'الموظف أكّد أن المشكلة اتحلت ✅', `${c.ticket_no} — ${cleanNote || 'تم تأكيد الحل من الموظف المختص'}`, 'complaint', c.id);
+      for (const a of DB.users.filter(x => x.role === 'admin' && x.active)) notify(a, confirmed ? 'الموظف أكّد الحل ✅' : 'الموظف بيقول المشكلة لسه ❗', `${c.ticket_no} — ${cleanNote || (confirmed ? 'لا يحتاج تدخل إضافي' : 'يحتاج متابعة')}`, 'complaint', c.id);
+      saveDb(DB);
+      return ok({ complaint: loadComplaint(c.id) });
+    }
+
 
     // ===== رضا الطلاب (إدارة) =====
     if (path === '/api/admin/satisfaction' && method === 'GET') {

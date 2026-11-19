@@ -257,9 +257,10 @@ route('POST', '/api/complaints/:id/status', async (req, res, p) => {
   if (!c) return fail(res, 404, 'الشكوى غير موجودة');
   if (!canSeeComplaint(s.user, c)) return fail(res, 403, 'ليست ضمن نطاقك');
   const resolvedAt = status === 'resolved' ? 'datetime(\'now\')' : 'NULL';
-  run(`UPDATE complaints SET status = ?, updated_at = datetime('now'), resolved_at = ${resolvedAt} WHERE id = ?`, [status, c.id]);
-  logUpdate(c.id, s.user.id, 'status', `تم تغيير الحالة إلى: ${STATUS_LABEL[status]}`);
-  notify(c.student_id, status === 'resolved' ? 'تم حل شكواك 🎉' : 'تحديث على شكواك', `${c.ticket_no} — الحالة أصبحت: ${STATUS_LABEL[status]}`, 'complaint', c.id);
+  run(`UPDATE complaints SET status = ?, updated_at = datetime('now'), resolved_at = ${resolvedAt}, closure_status = ? WHERE id = ?`,
+    [status, status === 'resolved' ? 'awaiting' : null, c.id]);
+  logUpdate(c.id, s.user.id, 'status', `تم تغيير الحالة إلى: ${STATUS_LABEL[status]}${status === 'resolved' ? ' — بانتظار تأكيد الطالب' : ''}`);
+  notify(c.student_id, status === 'resolved' ? 'الموظف لخّص مشكلتك — هل اتحلت؟ 🎉' : 'تحديث على شكواك', `${c.ticket_no} — ${status === 'resolved' ? 'بانتظار تأكيدك وتقييمك من داخل شكواك' : 'الحالة أصبحت: ' + STATUS_LABEL[status]}`, 'complaint', c.id);
   ok(res, { complaint: loadComplaint(c.id) });
 });
 
@@ -343,6 +344,7 @@ route('POST', '/api/complaints/:id/rate', async (req, res, p) => {
   const c = one('SELECT * FROM complaints WHERE id = ? AND student_id = ?', [p.id, s.user.id]);
   if (!c) return fail(res, 404, 'الشكوى غير موجودة');
   if (c.status !== 'resolved') return fail(res, 400, 'لا يمكن التقييم قبل الحل');
+  if (c.rating) return fail(res, 409, 'تم تقييم هذه الشكوى من قبل — أي تصحيح يتم عبر الإدارة');
   run('UPDATE complaints SET rating = ?, rating_comment = ? WHERE id = ?', [r, String(comment || '').trim().slice(0, 1000) || null, c.id]);
   ok(res, { complaint: loadComplaint(c.id) });
 });
@@ -661,6 +663,17 @@ route('GET', '/api/attendance/report', async (req, res) => {
   ok(res, { sessionsToday, recordsToday, totalRecords, top });
 });
 
+// مسح تقييم شكوى — تصحيح بصلاحية الإدارة فقط
+route('POST', '/api/admin/complaints/:id/reset-rating', async (req, res, p) => {
+  const s = requireRole(req, res, ['admin']); if (!s) return;
+  const c = one('SELECT * FROM complaints WHERE id = ?', [p.id]);
+  if (!c) return fail(res, 404, 'الشكوى غير موجودة');
+  if (!c.rating) return fail(res, 400, 'لا يوجد تقييم على هذه الشكوى أصلًا');
+  run('UPDATE complaints SET rating = NULL, rating_comment = NULL, updated_at = datetime(\'now\') WHERE id = ?', [c.id]);
+  logUpdate(c.id, s.user.id, 'rating_reset', `تم مسح تقييم الطالب (كان ${c.rating}/5) بمعرفة الإدارة`);
+  ok(res, { complaint: loadComplaint(c.id) });
+});
+
 // الأولوية يدويًا (موظف/إدارة)
 route('POST', '/api/complaints/:id/priority', async (req, res, p) => {
   const s = requireRole(req, res, ['staff', 'admin']); if (!s) return;
@@ -672,6 +685,65 @@ route('POST', '/api/complaints/:id/priority', async (req, res, p) => {
   run('UPDATE complaints SET priority = ?, updated_at = datetime(\'now\') WHERE id = ?', [priority, c.id]);
   logUpdate(c.id, s.user.id, 'priority', `تم تعديل الأولوية يدويًا إلى: ${priority}`);
   notify(c.student_id, 'تم تحديث أولوية طلبك', `${c.ticket_no} — الأولوية أصبحت ${priority}`, 'complaint', c.id);
+  ok(res, { complaint: loadComplaint(c.id) });
+});
+
+// ===== تأكيد الطالب على الحل (closure handshake) =====
+route('POST', '/api/complaints/:id/confirm', async (req, res, p) => {
+  const s = requireRole(req, res, ['student']); if (!s) return;
+  const { decision, reason } = await parseJson(req);
+  if (!['confirmed', 'rejected'].includes(decision)) return fail(res, 400, 'القرار غير صالح');
+  const c = one('SELECT * FROM complaints WHERE id = ? AND student_id = ?', [p.id, s.user.id]);
+  if (!c) return fail(res, 404, 'الشكوى غير موجودة');
+  if (c.status !== 'resolved') return fail(res, 400, 'لا يمكن تأكيد الحل قبل أن يعلّم الموظف المشكلة كمحلولة');
+  if (c.closure_status === 'confirmed') return fail(res, 409, 'تم تأكيد الحل بالفعل');
+  if (decision === 'confirmed') {
+    run('UPDATE complaints SET closure_status = \'confirmed\', internal_resolution = \'confirmed\', updated_at = datetime(\'now\') WHERE id = ?', [c.id]);
+    logUpdate(c.id, s.user.id, 'closure_confirmed', 'الطالب أكّد أن مشكلته اتحلت');
+    const ids = new Set([c.assigned_to, ...q('SELECT id FROM users WHERE role = \'admin\' AND active = 1').map(r => r.id)].filter(Boolean));
+    for (const t of ids) notify(t, 'الطالب أكّد إغلاق الشكوى ✓', `${c.ticket_no} — الطالب أكّد أن مشكلته اتحلت`, 'complaint', c.id);
+  } else {
+    const note = String(reason || '').trim();
+    if (note.length < 5) return fail(res, 400, 'اكتب سبب عدم الحل (5 أحرف+)');
+    run('UPDATE complaints SET status = \'in_progress\', closure_status = NULL, resolved_at = NULL, updated_at = datetime(\'now\') WHERE id = ?', [c.id]);
+    logUpdate(c.id, s.user.id, 'reopened', `الطالب أكّد أن المشكلة اتحلت لا — السبب: ${note.slice(0, 300)}`);
+    const ids = new Set([c.assigned_to, ...q('SELECT id FROM users WHERE role = \'admin\' AND active = 1').map(r => r.id)].filter(Boolean));
+    for (const t of ids) notify(t, 'الطالب بيقول المشكلة لسه موجودة ❗', `${c.ticket_no} — السبب: ${note.slice(0, 100)}`, 'complaint', c.id);
+  }
+  ok(res, { complaint: loadComplaint(c.id) });
+});
+
+// ===== الشؤون تطلب تأكيد الحل من الموظف (internal ping) =====
+route('POST', '/api/complaints/:id/request-confirmation', async (req, res, p) => {
+  const s = requireRole(req, res, ['staff', 'admin']); if (!s) return;
+  const c = one('SELECT * FROM complaints WHERE id = ?', [p.id]);
+  if (!c) return fail(res, 404, 'الشكوى غير موجودة');
+  if (!canSeeComplaint(s.user, c)) return fail(res, 403, 'ليست ضمن نطاقك');
+  if (c.internal_resolution === 'requested') return fail(res, 409, 'تم طلب تأكيد الحل بالفعل ولم يرد الموظف بعد');
+  run('UPDATE complaints SET internal_resolution = \'requested\', internal_resolution_note = NULL, updated_at = datetime(\'now\') WHERE id = ?', [c.id]);
+  logUpdate(c.id, s.user.id, 'request_confirmation', 'الشؤون طلبت تأكيد الحل من الموظف المختص');
+  run('INSERT INTO messages(complaint_id, sender_id, body, is_internal) VALUES (?,?,?,1)', [c.id, s.user.id, '🔔 الشؤون طلبت تأكيد: هل المشكلة اتحلت فعلًا؟ (رد من داخل الشكوى)']);
+  const targets = c.assigned_to ? [c.assigned_to] : q('SELECT id FROM users WHERE role = \'staff\' AND department_id = ? AND active = 1', [c.department_id]).map(r => r.id);
+  for (const t of targets) notify(t, '🔔 الشؤون طلبت تأكيد الحل منك', `${c.ticket_no} — هل المشكلة اتحلت فعلًا؟`, 'complaint', c.id);
+  ok(res, { complaint: loadComplaint(c.id) });
+});
+
+// رد الموظف على طلب الشؤون (تأكيد/نفي الحل)
+route('POST', '/api/complaints/:id/employee-confirm', async (req, res, p) => {
+  const s = requireRole(req, res, ['staff', 'admin']); if (!s) return;
+  const { decision, note } = await parseJson(req);
+  if (!['confirmed', 'not_confirmed'].includes(decision)) return fail(res, 400, 'القرار غير صالح');
+  const c = one('SELECT * FROM complaints WHERE id = ?', [p.id]);
+  if (!c) return fail(res, 404, 'الشكوى غير موجودة');
+  if (!canSeeComplaint(s.user, c)) return fail(res, 403, 'ليست ضمن نطاقك');
+  const cleanNote = String(note || '').trim().slice(0, 500);
+  const confirmed = decision === 'confirmed';
+  run('UPDATE complaints SET internal_resolution = ?, internal_resolution_note = ?, updated_at = datetime(\'now\') WHERE id = ?', [confirmed ? 'confirmed' : 'not_confirmed', cleanNote || null, c.id]);
+  logUpdate(c.id, s.user.id, confirmed ? 'employee_confirmed' : 'employee_not_confirmed', cleanNote || (confirmed ? 'الموظف أكّد الحل' : 'الموظف بيقول المشكلة لسه موجودة'));
+  if (confirmed) {
+    notify(c.student_id, 'الموظف أكّد أن المشكلة اتحلت ✅', `${c.ticket_no} — ${cleanNote || 'تم تأكيد الحل من الموظف المختص'}`, 'complaint', c.id);
+  }
+  for (const a of q('SELECT id FROM users WHERE role = \'admin\' AND active = 1')) notify(a, confirmed ? 'الموظف أكّد الحل ✅' : 'الموظف بيقول المشكلة لسه ❗', `${c.ticket_no} — ${cleanNote || (confirmed ? 'لا يحتاج تدخل إضافي' : 'يحتاج متابعة')}`, 'complaint', c.id);
   ok(res, { complaint: loadComplaint(c.id) });
 });
 
@@ -809,7 +881,7 @@ function serveStatic(req, res, pathname) {
   fs.readFile(file, (err, data) => {
     if (err) return send(res, 404, { ok: false, error: 'الصفحة غير موجودة' });
     const ext = path.extname(file).toLowerCase();
-    send(res, 200, data, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600' });
+    send(res, 200, data, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': ext === '.html' || ext === '.css' || ext === '.js' ? 'no-cache' : 'public, max-age=3600' });
   });
 }
 

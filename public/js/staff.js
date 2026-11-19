@@ -77,7 +77,7 @@ async function loadComplaints() {
       <td><b style="font-size:.82rem">${escapeHtml(c.student_name)}</b><br><span style="font-size:.68rem;color:var(--muted)" dir="ltr">${escapeHtml(c.student_code || '')}</span></td>
       <td style="max-width:280px"><b style="font-size:.83rem">${escapeHtml(c.title.slice(0, 70))}${c.title.length > 70 ? '…' : ''}</b><br><span style="font-size:.68rem;color:var(--muted)">${escapeHtml(c.type_name || '—')}</span></td>
       <td>${priorityBadge(c.priority)}</td>
-      <td>${statusBadge(c.status)}</td>
+      <td>${statusBadge(c.status)} ${closureTag(c)}</td>
       <td style="white-space:nowrap;font-size:.76rem">${fmtDay(c.created_at)}</td>
       <td><button class="btn btn-primary btn-sm" data-open="${c.id}">فتح</button></td>
     </tr>`).join('');
@@ -106,7 +106,9 @@ async function openComplaint(id) {
 
 function renderModal({ complaint: c, messages, updates }) {
   $('#modalTitle').textContent = `${c.ticket_no} — ${c.title}`;
-  $('#modalHeadInfo').innerHTML = `<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">${statusBadge(c.status)} ${priorityBadge(c.priority)}<span style="font-size:.75rem;color:var(--muted)">القسم: <b>${escapeHtml(c.department_name)}</b>${c.assigned_name ? ' · مسندة إلى: <b>' + escapeHtml(c.assigned_name) + '</b>' : ' · غير مسندة'} · أُنشئت ${fmtDate(c.created_at)}</span></div>`;
+  $('#modalHeadInfo').innerHTML = `<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">${statusBadge(c.status)} ${priorityBadge(c.priority)}${closureTag(c)}<span style="font-size:.75rem;color:var(--muted)">القسم: <b>${escapeHtml(c.department_name)}</b>${c.assigned_name ? ' · مسندة إلى: <b>' + escapeHtml(c.assigned_name) + '</b>' : ' · غير مسندة'} · أُنشئت ${fmtDate(c.created_at)}</span></div>`;
+  renderStepper($('#modalStepper'), c, updates);
+  renderEmployeeBanner(c);
   $('#mdStudent').textContent = c.student_name;
   $('#mdCode').textContent = c.student_code || '—';
   $('#mdEmail').textContent = c.student_email || '—';
@@ -139,7 +141,43 @@ function renderModal({ complaint: c, messages, updates }) {
   }).join('') : '<p style="color:var(--muted);font-size:.82rem;text-align:center;padding:1rem">لا توجد رسائل بعد.</p>';
   chat.scrollTop = chat.scrollHeight;
 }
-function actionLabel(a) { return { created: 'تم إنشاء الشكوى', status: 'تغيير الحالة', assigned: 'إسناد', transfer: 'تحويل لقسم', request_info: 'طلب معلومات' }[a] || a; }
+// ===== بانر تأكيد الحل — رد الموظف على «الشؤون طلبت تأكيد» =====
+function renderEmployeeBanner(c) {
+  const banner = $('#employeeConfirmBanner');
+  const stateEl = $('#employeeConfirmState');
+  const titleEl = $('#employeeBannerText');
+  const yesBtn = $('#employeeConfirmYes'), noBtn = $('#employeeConfirmNo'), noteInput = $('#employeeConfirmNote');
+  if (c.internal_resolution === 'requested') {
+    banner.style.display = 'flex';
+    stateEl.style.display = 'none';
+    titleEl.textContent = 'الشؤون طلبت تأكيد الحل — المشكلة اتحلت فعلًا؟';
+    noteInput.value = c.internal_resolution_note || '';
+    noteInput.style.display = 'inline-block';
+    yesBtn.style.display = 'inline-flex'; noBtn.style.display = 'inline-flex';
+    const respond = async (decision) => {
+      const r = await api(`/api/complaints/${c.id}/employee-confirm`, { method: 'POST', body: { decision, note: noteInput.value.trim() } });
+      if (!r.ok) return toast(r.error, 'err');
+      toast(decision === 'confirmed' ? 'أكيد كحل ✓' : 'تم إرسال إن المشكلة لسه موجودة');
+      const reload = await api(`/api/complaints/${c.id}`);
+      if (reload.ok) renderModal(reload.data);
+      if (typeof loadComplaints === 'function') loadComplaints();
+    };
+    yesBtn.onclick = () => respond('confirmed');
+    noBtn.onclick = () => respond('not_confirmed');
+  } else if (c.internal_resolution === 'confirmed' || c.internal_resolution === 'not_confirmed') {
+    banner.style.display = 'flex';
+    yesBtn.style.display = 'none'; noBtn.style.display = 'none';
+    noteInput.style.display = 'none';
+    stateEl.style.display = 'block';
+    stateEl.style.color = c.internal_resolution === 'confirmed' ? '#7EE0A0' : '#FCA5A5';
+    stateEl.textContent = c.internal_resolution === 'confirmed' ? `✓ أكّدت الحل${c.internal_resolution_note ? ' — ملاحظتك: ' + c.internal_resolution_note : ''}` : `✗ لسه مش محلولة${c.internal_resolution_note ? ' — ملاحظتك: ' + c.internal_resolution_note : ''}`;
+    titleEl.textContent = c.internal_resolution === 'confirmed' ? 'تم تسجيل تأكيد الحل لدى الشؤون' : 'تم تسجيل إن المشكلة لسه موجودة';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function actionLabel(a) { return { created: 'تم إنشاء الشكوى', status: 'تغيير الحالة', assigned: 'إسناد', transfer: 'تحويل لقسم', request_info: 'طلب معلومات', priority: 'تعديل الأولوية يدويًا', closure_confirmed: 'الطالب أكّد الحل', reopened: 'الشكوى اُعيد فتحها', request_confirmation: 'الشؤون طلبت تأكيد الحل', employee_confirmed: 'الموظف أكّد الحل', employee_not_confirmed: 'الموظف: لسه مش محلولة', rating_reset: 'تم مسح التقييم بمعرفة الإدارة' }[a] || a; }
 
 async function reloadModal() {
   if (!currentComplaintId) return;

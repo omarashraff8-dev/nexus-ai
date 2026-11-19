@@ -43,6 +43,59 @@ const priorityBadge = p => `<span class="priority ${p}">${PRIORITY[p] || p}</spa
 
 const ROLE_HOME = { student: 'student.html', staff: 'staff.html', admin: 'admin.html' };
 
+// ============================================================
+//  تايم لاين الشكوى — 7 مراحل مشتقة من بيانات حقيقية
+// ============================================================
+function buildTimelineSteps(complaint, updates) {
+  const byAction = (a) => (updates || []).filter(u => u.action === a);
+  const firstStatus = byAction('status')[0] || null;
+  const firstAssign = byAction('assigned')[0] || null;
+  const firstTransfer = byAction('transfer')[0] || null;
+  const now = new Date();
+  const created = complaint.created_at ? new Date(String(complaint.created_at).replace(' ', 'T') + 'Z') : null;
+  const assignedAt = firstAssign ? new Date(String(firstAssign.created_at).replace(' ', 'T') + 'Z') : (complaint.assigned_to ? created : null);
+  const inProgressAt = firstStatus ? new Date(String(firstStatus.created_at).replace(' ', 'T') + 'Z') : null;
+  const resolvedAt = complaint.resolved_at ? new Date(String(complaint.resolved_at).replace(' ', 'T') + 'Z') : null;
+  const closureLog = (updates || []).find(u => u.action === 'closure_confirmed');
+  const closureAt = closureLog ? new Date(String(closureLog.created_at).replace(' ', 'T') + 'Z') : (complaint.rating ? (complaint.updated_at ? new Date(String(complaint.updated_at).replace(' ', 'T') + 'Z') : resolvedAt) : null);
+  const closureDone = complaint.closure_status === 'confirmed' || !!complaint.rating;
+  const rejected = complaint.status === 'rejected';
+  const fmt = d => d ? d.toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+
+  return [
+    { label: 'تم الإرسال', time: created, state: 'done' },
+    { label: 'تم الاستلام', time: assignedAt, state: assignedAt ? 'done' : 'pending' },
+    { label: 'قيد المراجعة', time: inProgressAt || (complaint.status !== 'new' ? created : null), state: complaint.status === 'new' ? 'pending' : (complaint.status === 'in_progress' ? 'current' : 'done') },
+    { label: 'التحويل لقسم', time: firstTransfer ? new Date(String(firstTransfer.created_at).replace(' ', 'T') + 'Z') : null, state: firstTransfer ? 'done' : 'skipped' },
+    { label: rejected ? 'تم الرفض' : 'قيد المعالجة', time: inProgressAt, state: complaint.status === 'in_progress' ? 'current' : (complaint.status === 'resolved' ? 'done' : rejected ? 'rejected' : 'pending') },
+    { label: 'تم الحل', time: resolvedAt, state: complaint.status === 'resolved' ? (closureDone ? 'done' : 'current') : 'pending' },
+    { label: 'الإغلاق (تأكيد)', time: closureAt, state: closureDone ? 'done' : (complaint.status === 'resolved' ? 'current' : 'pending') },
+  ].map(s => ({ ...s, timeText: s.state === 'pending' ? 'لم تتم' : s.time ? fmt(s.time) : '—' }));
+}
+
+function renderStepper(container, complaint, updates) {
+
+  if (!container) return;
+  const steps = buildTimelineSteps(complaint, updates);
+  container.innerHTML = steps.map(s => `
+    <div class="step ${s.state}" title="${escapeHtml(s.label)} — ${escapeHtml(s.timeText)}">
+      <div class="step-dot">${s.state === 'done' ? '✓' : s.state === 'current' ? '●' : s.state === 'rejected' ? '✕' : '○'}</div>
+      <div class="step-label">${escapeHtml(s.label)}</div>
+      <div class="step-time">${escapeHtml(s.timeText)}</div>
+    </div>`).join('');
+}
+
+// شارة «بانتظار تأكيد الطالب / مُغلقة / الموظف أكّد» للقوائم
+function closureTag(c) {
+  if (!c) return '';
+  if (c.status === 'resolved' && c.closure_status === 'confirmed') return '<span class="badge resolved" style="font-size:.64rem">مُغلقة ✓</span>';
+  if (c.status === 'resolved' && c.internal_resolution === 'confirmed') return '<span class="badge resolved" style="font-size:.64rem">الموظف أكّد</span>';
+  if (c.internal_resolution === 'requested') return '<span class="badge in_progress" style="font-size:.64rem">⌛ الشؤون طلبت تأكيد</span>';
+  if (c.internal_resolution === 'not_confirmed') return '<span class="badge rejected" style="font-size:.64rem">الموظف: لسه</span>';
+  if (c.status === 'resolved') return '<span class="badge new" style="font-size:.64rem">بانتظار تأكيد الطالب</span>';
+  return '';
+}
+
 // حارس الصفحة: يتأكد من تسجيل الدخول والدور، ويرجع بيانات المستخدم
 async function requireRolePage(expectedRole) {
   const r = await api('/api/auth/me');
@@ -96,8 +149,9 @@ function initShell(opts = {}) {
         dropdown.innerHTML = '<div style="padding:.8rem;text-align:center;color:var(--muted);font-size:.8rem">جارِ التحميل...</div>';
         const r = await api('/api/notifications?limit=6');
         if (r.ok && r.data.length) {
-          dropdown.innerHTML = r.data.map(n => `<button class="notif-item ${n.read ? '' : 'unread'}" data-id="${n.id}" data-ref="${n.ref_id || ''}" data-type="${n.ref_type || ''}" style="width:100%;text-align:start;background:none;border:none;cursor:pointer"><div><b>${escapeHtml(n.title)}</b><p>${escapeHtml(n.body || '')}</p></div><time>${fmtDay(n.created_at)}</time></button>`).join('') + '<button id="markAllRead" class="btn btn-outline btn-sm btn-block" style="margin-top:.4rem">تعليم الكل كمقروء</button>';
+          dropdown.innerHTML = r.data.map(n => `<button class="notif-item ${n.read ? '' : 'unread'}" data-id="${n.id}" data-ref="${n.ref_id || ''}" data-type="${n.ref_type || ''}" style="width:100%;text-align:start;background:none;border:none;cursor:pointer"><span style="font-size:1.05rem;flex:0 0 auto">${({ complaint: '🎫', announcement: '📢', lostfound: '🧳' }[n.ref_type] || '🔔')}</span><div><b>${escapeHtml(n.title)}</b><p>${escapeHtml(n.body || '')}</p></div><time>${fmtDay(n.created_at)}</time></button>`).join('') + '<div style="display:flex;gap:.4rem;padding:.4rem"><button id="markAllRead" class="btn btn-outline btn-sm" style="flex:1">تعليم الكل كمقروء</button><button id="viewAllNotifs" class="btn btn-primary btn-sm" style="flex:1">عرض الكل ←</button></div>';
           $('#markAllRead').addEventListener('click', async () => { await api('/api/notifications/read-all', { method: 'POST' }); refreshBadge(); dropdown.style.display = 'none'; toast('تم تعليم كل الإشعارات كمقروءة'); });
+          $('#viewAllNotifs').addEventListener('click', () => { dropdown.style.display = 'none'; const link = document.querySelector('.side-link[data-section="notifs"]'); if (link) link.click(); });
         } else {
           dropdown.innerHTML = '<div style="padding:.8rem;text-align:center;color:var(--muted);font-size:.8rem">لا توجد إشعارات بعد</div>';
         }

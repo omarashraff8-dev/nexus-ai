@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/nexus.css">
+<link rel="stylesheet" href="css/nexus.css?v=5">
 <style>
 .predict-card { background: linear-gradient(135deg,#1A1040,#0A1B33); color:#fff; border:1px solid rgba(167,139,250,.35); }
 .predict-card b { color:#C4B5FD }
@@ -101,6 +101,11 @@ canvas.chart { width:100%; height:230px; display:block }
               <p style="font-size:.75rem;color:var(--muted)">من إنشاء الشكوى حتى إغلاقها — عبر كل الأقسام.</p>
             </div>
           </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4a2 2 0 0 0 2 5h1M17 6h3a2 2 0 0 1-2 5h-1"/></svg>تصنيف أداء الأقسام</h2><span class="chip" style="margin:0;font-size:.65rem">محسوب من بيانات حقيقية</span></div>
+          <div class="table-wrap"><table class="data rank-table"><thead><tr><th>#</th><th>القسم</th><th>الشكاوى</th><th>% الحل</th><th>متوسط زمن الحل</th><th>الرضا</th><th>النتيجة</th></tr></thead><tbody id="deptRankTableBody"><tr><td colspan="7" style="text-align:center;color:var(--muted)">جارِ الحساب...</td></tr></tbody></table></div>
         </div>
 
         <button class="card predict-card" data-goto="insights" style="text-align:start;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:1rem;border:1px solid rgba(167,139,250,.4)">
@@ -301,6 +306,14 @@ canvas.chart { width:100%; height:230px; display:block }
     <div class="modal-head"><h3 id="viewModalTitle">تفاصيل الشكوى</h3><button class="icon-btn" id="closeViewModal" aria-label="إغلاق"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
     <div class="modal-body">
       <div id="viewHeadInfo" style="margin-bottom:.6rem"></div>
+      <div class="employee-banner" id="adminConfirmBanner" style="display:none;margin-bottom:.6rem">
+        <div><b id="adminConfirmTitle">🔔 اسأل الموظف: هل اتحلت؟</b><p id="adminConfirmText">اطلب من الموظف تأكيد الحل — هيرد من لوحته بنفس الشكوى.</p></div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-cyan btn-sm" id="adminRequestConfirmBtn">📤 طلب تأكيد الحل</button>
+          <span id="adminConfirmState" style="display:none;font-size:.8rem;font-weight:800"></span>
+        </div>
+        <p id="adminConfirmNote" style="display:none;font-size:.8rem;background:rgba(255,255,255,.05);border-radius:8px;padding:.35rem .6rem"></p>
+      </div>
       <div class="ai-analysis" id="viewAiBox" style="display:none;margin-bottom:.6rem"></div>
       <p id="viewDetails" style="font-size:.87rem;white-space:pre-line;background:#F8FBFF;border:1px solid var(--line);border-radius:var(--radius-sm);padding:.6rem .8rem;margin-bottom:.6rem"></p>
       <div id="viewAttachment" style="margin-bottom:.6rem;font-size:.8rem"></div>
@@ -314,6 +327,7 @@ canvas.chart { width:100%; height:230px; display:block }
             <option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">مرتفعة</option><option value="urgent">عاجلة</option><option value="critical">حرجة</option>
           </select>
         </div>
+        <button class="btn btn-outline" id="viewResetRatingBtn" style="display:none;border-color:#FCA5A5;color:#DC2626">مسح التقييم</button>
         <button class="btn btn-primary" id="viewAssignBtn">إسناد لموظف</button>
       </div>
     </div>
@@ -323,8 +337,8 @@ canvas.chart { width:100%; height:230px; display:block }
 <!-- منطقة طباعة التقرير -->
 <div id="printReport" class="print-only"><h1>NEXUS AI — تقرير الشكاوى</h1><div id="printReportBody" style="white-space:pre-line"></div></div>
 
-<script src="js/local-backend.js"></script>
-<script src="js/common.js"></script>
-<script src="js/admin.js"></script>
+<script src="js/local-backend.js?v=5"></script>
+<script src="js/common.js?v=5"></script>
+<script src="js/admin.js?v=5"></script>
 </body>
 </html>
