@@ -130,24 +130,36 @@ function initShell(opts = {}) {
     const closeSidebar = () => { sidebar.classList.remove('open'); backdrop.classList.remove('show'); };
 
     const toggle = $('.sidebar-toggle');
-    if (toggle) toggle.addEventListener('click', e => {
+    const toggleFn = e => {
       e.stopPropagation();
       sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
-    });
-    // أي كبسة داخل القائمة على رابط/زرار قفلها فورًا
-    sidebar.addEventListener('click', e => {
+    };
+    // click + touch = استجابة فورية على كل الأجهزة (بعض أجهزة Android تضيع الـ click بعد تغيير القسم)
+    if (toggle) {
+      toggle.addEventListener('click', toggleFn);
+      toggle.addEventListener('touchend', toggleFn, { passive: true });
+    }
+    // أي لمس/كبسة داخل القائمة على رابط/زرار قفلها فورًا
+    const insideFn = e => {
       if (e.target.closest('.side-link') || e.target.closest('a') || e.target.closest('button')) closeSidebar();
-    });
-    // أي كبسة بره القائمة تقفلها
-    document.addEventListener('click', e => {
+    };
+    sidebar.addEventListener('click', insideFn);
+    sidebar.addEventListener('touchend', insideFn, { passive: true });
+    // أي كبسة/لمسة بره القائمة تقفلها
+    const outsideFn = e => {
       if (!sidebar.classList.contains('open')) return;
       if (e.target.closest('.sidebar') || e.target.closest('.sidebar-toggle')) return;
       closeSidebar();
-    });
+    };
+    document.addEventListener('click', outsideFn);
+    document.addEventListener('touchend', outsideFn, { passive: true });
     // الكبسة على طبقة التعتيم تقفلها
     backdrop.addEventListener('click', closeSidebar);
-    // Escape يقفلها
+    backdrop.addEventListener('touchend', closeSidebar, { passive: true });
+    // Escape + تغيير المسار (Routing) يقفلها
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+    window.addEventListener('hashchange', closeSidebar);
+    window.addEventListener('popstate', closeSidebar);
   }
 
   // تبديل أقسام الصفحة (SPA-lite)
